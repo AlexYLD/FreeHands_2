@@ -212,7 +212,7 @@ public class SingleHostProcess extends Thread {
     @SneakyThrows
     private void firstConnect() {
         String listenerCode = FileUtils.readFileToString(new File(Main.class.getClassLoader().getResource("ituff_tracker").getFile()));
-        String signedListenerLocation = Main.auth.getProperty("listenerLocation") + signature + ".sh";
+        //String signedListenerLocation = Main.auth.getProperty("listenerLocation") + signature + ".sh";
         String remoteListenerLocation = Main.auth.getProperty("remoteListenerLocation") + signature + ".sh";
 
         listenerCode = listenerCode.replaceFirst("switch", "switch" + signature).replaceFirst("tracker", "tracker" + signature);
