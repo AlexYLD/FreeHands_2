@@ -1,0 +1,37 @@
+.label {
+    -fx-text-fill: black;
+    -fx-font-weight: bold;
+}
+
+.scroll-pane {
+    -fx-background: #caff92;
+}
+
+.chart {
+    -fx-max-height: 200;
+}
+
+
+
+.name-Label {
+    -fx-background-color: blue;
+    -fx-max-width: infinity;
+    -fx-border-color: black;
+    -fx-pref-width: 80;
+    -fx-alignment: center;
+    -fx-text-fill: white;
+}
+
+.bin-Label {
+    -fx-background-color: lightblue;
+    -fx-max-width: infinity;
+    -fx-border-color: black;
+    -fx-pref-width: 80;
+    -fx-alignment: center;
+    -fx-text-fill: #6b0100;
+}
+
+.root {
+    -fx-background-color: #caff92;
+    -fx-text-fill: black;
+}

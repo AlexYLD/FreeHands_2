@@ -1,0 +1,89 @@
+.root {
+    -fx-background-color: #2F4F4F;
+    -fx-text-fill: chartreuse;
+}
+
+.stats-List {
+    -fx-max-height: 90;
+}
+
+.label {
+    -fx-text-fill: chartreuse;
+    -fx-font-weight: bold;
+}
+
+.list-cell {
+    -fx-alignment: top-center;
+
+    -fx-font-weight: bold;
+}
+
+.list-cell-pass {
+    -fx-background-color: lightgreen;
+    -fx-text-fill: white;
+    -fx-border-color: #2F4F4F;
+}
+
+.list-cell-fail {
+    -fx-background-color: red;
+    -fx-text-fill: white;
+    -fx-border-color: #2F4F4F;
+}
+
+.list-cell-com {
+    -fx-background-color: #1e0e6b;
+    -fx-text-fill: white;
+    -fx-border-color: #2F4F4F;
+}
+
+.check-box {
+    -fx-text-fill: chartreuse;
+    -fx-font-weight: bold;
+}
+
+.name-Label {
+    -fx-background-color: linear-gradient(whitesmoke, lightgray);
+    -fx-border-color: grey;
+    -fx-max-width: infinity;
+    -fx-alignment: center;
+    -fx-text-fill: #6b0100;
+}
+
+.grid-table {
+    -fx-background-color: whitesmoke;
+    -fx-font-size: 11;
+    -fx-border-color: grey;
+    -fx-border-radius: 3;
+
+}
+
+.warning-green {
+    -fx-background-color: linear-gradient(lightgreen, #67b55b);
+    -fx-text-fill: white;
+    -fx-border-color: grey;
+    -fx-border-radius: 3;
+}
+
+.warning-green:hover {
+    -fx-background-color: linear-gradient(#fff8b6, lightgreen);
+}
+
+.warning-green:pressed {
+    -fx-background-color: #67b55b;
+}
+
+.warning-red {
+    -fx-background-color: linear-gradient(pink, red);
+    -fx-text-fill: white;
+    -fx-border-color: grey;
+    -fx-border-radius: 3;
+}
+
+.warning-red:hover {
+    -fx-background-color: linear-gradient(#ff958a, #ff3d36);
+}
+
+.warning-red:pressed {
+    -fx-background-color: red;
+
+}

@@ -1,0 +1,16 @@
+#!/bin/bash
+mylist=$(ls /ppv/tools/DARC/Logs/ituffs/ | grep Dut_)
+while [ "$(cat /ppv/tools/DARC/switch)" == "true" ]
+do
+sleep 3
+my2list=$(ls /ppv/tools/DARC/Logs/ituffs/ | grep Dut_)
+if [ "$mylist" = "$my2list" ]
+then
+echo "true"
+else
+echo "false"
+ssh ayarygix@ayarygix-MOBL1.ger.corp.intel.com "touch "/cygdrive/c/freehandsstuff/flags/"$(hostname)\ $(date +"%s")"""
+fi
+mylist="$my2list"
+done
+rm /ppv/tools/DARC/ituff_tracker.sh
