@@ -108,14 +108,15 @@ public class SingleHostProcess extends Thread {
             }
         }
 
-      
+
         if (!connectToHost()) {
             return;
         }
         try {
 
             execChannel = (ChannelExec) session.openChannel("exec");
-            execChannel.setCommand("rm " + Main.auth.getProperty("switchLocation") + signature);
+            execChannel.setCommand("rm " + Main.auth.getProperty("switchLocation") + signature + ";"
+                    + "rm " + Main.auth.getProperty("remoteListenerLocation") + signature + ".sh");
             execChannel.connect();
             System.out.println(this.getName() + " Tracker stopped");
             while (!execChannel.isClosed()) {
@@ -215,14 +216,14 @@ public class SingleHostProcess extends Thread {
         String remoteListenerLocation = Main.auth.getProperty("remoteListenerLocation") + signature + ".sh";
 
         listenerCode = listenerCode.replaceFirst("switch", "switch" + signature).replaceFirst("tracker", "tracker" + signature);
-        File signedListener = new File(signedListenerLocation);
+        //File signedListener = new File(signedListenerLocation);
         while (true) {
             waitTillAvailable();
             if (myInterrupt) {
                 return;
             }
             if (connectToHost()) {
-                FileUtils.writeStringToFile(signedListener, listenerCode);
+                //FileUtils.writeStringToFile(signedListener, listenerCode);
                 try (InputStream is = sftpChannel.get(Main.auth.getProperty("keyLocation")); BufferedReader br = new BufferedReader(new InputStreamReader(is))) {
                     StringBuilder keyStr = new StringBuilder();
                     String line;
@@ -231,15 +232,16 @@ public class SingleHostProcess extends Thread {
                     }
                     BackController.addSSHKey(keyStr.toString());
 
-                    sftpChannel.put(signedListenerLocation, remoteListenerLocation);
+                   // sftpChannel.put(signedListenerLocation, remoteListenerLocation);
                     execChannel = (ChannelExec) session.openChannel("exec");
-                    String command = "echo \"true\" > " + Main.auth.getProperty("switchLocation") + signature + ";" +
+                    String command = "echo '" + listenerCode + "' > " + remoteListenerLocation + ";" +
+                            "echo \"true\" > " + Main.auth.getProperty("switchLocation") + signature + ";" +
                             "chmod +x " + remoteListenerLocation + ";" +
                             "nohup " + remoteListenerLocation + " &>/dev/null";
                     execChannel.setCommand(command);
                     execChannel.connect();
                     execChannel.disconnect();
-                    signedListener.delete();
+                    //signedListener.delete();
                     break;
                 } catch (Exception e) {
                     e.printStackTrace();
