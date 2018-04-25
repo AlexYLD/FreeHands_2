@@ -9,6 +9,7 @@ import freeHands.gui.Main;
 import javafx.application.Platform;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
+import javafx.scene.control.TextArea;
 import lombok.Getter;
 import lombok.Setter;
 import lombok.SneakyThrows;
@@ -37,6 +38,9 @@ public class SingleHostProcess extends Thread {
     private List<String> notOnHostNames;
     private boolean myInterrupt;
     private String signature;
+
+    private final Object mergeLock = new Object();
+
 
     public SingleHostProcess(String host) {
         if (host.contains(" ")) {
@@ -92,7 +96,7 @@ public class SingleHostProcess extends Thread {
             List<File> list = new ArrayList(Arrays.asList(flagsFolder.listFiles()));
             for (int i = 0; i < list.size(); i++) {
                 File file = list.get(i);
-                if (file.getName().startsWith(this.getName().toLowerCase())) {
+                if (file.getName().toLowerCase().startsWith(this.getName().toLowerCase())) {
                     checkAndTake();
                     list.remove(file);
                     file.delete();
@@ -103,6 +107,8 @@ public class SingleHostProcess extends Thread {
                 try {
                     Thread.sleep(2000);
                 } catch (InterruptedException e) {
+                    currentThread().interrupt();
+                    myInterrupt();
                     break;
                 }
             }
@@ -113,7 +119,6 @@ public class SingleHostProcess extends Thread {
             return;
         }
         try {
-
             execChannel = (ChannelExec) session.openChannel("exec");
             execChannel.setCommand("rm " + Main.auth.getProperty("switchLocation") + signature + ";"
                     + "rm " + Main.auth.getProperty("remoteListenerLocation") + signature + ".sh");
@@ -122,28 +127,82 @@ public class SingleHostProcess extends Thread {
             while (!execChannel.isClosed()) {
                 Thread.sleep(500);
             }
-            execChannel.disconnect();
+            disconnect();
         } catch (JSchException | InterruptedException e) {
+            currentThread().interrupt();
+            myInterrupt();
             e.printStackTrace();
         }
 
         System.out.println(this.getName() + " Out");
     }
 
-    @Override
-    public void interrupt() {
+
+    public void myInterrupt() {
         myInterrupt = true;
     }
 
     private void checkAndTake() {
+        synchronized (mergeLock) {
+            List<String> remoteNames;
+            Vector<ChannelSftp.LsEntry> remoteFolderVector = getRemoteNamesVector();
+
+            if (remoteFolderVector != null) {
+                remoteNames = remoteFolderVector.stream()
+                        .map(ChannelSftp.LsEntry::getFilename)
+                        .collect(Collectors.toList());
+                for (String fileName : remoteNames) {
+                    if (!fileName.startsWith("Dut") || fileName.endsWith("~") || existNames.contains(fileName)) {
+                        continue;
+                    }
+                    StringBuilder ituffText = new StringBuilder();
+                    try (InputStream is = sftpChannel.get(fileName); BufferedReader br = new BufferedReader(new InputStreamReader(is))) {
+                        String line;
+                        while ((line = br.readLine()) != null) {
+                            ituffText.append(line).append("\n");
+                        }
+                    } catch (IOException | SftpException e) {
+                        break;
+                    }
+                    if (ituffText.length() > 0) {
+                        ItuffObject ituffObj = new ItuffObject(fileName, ituffText.toString());
+                        String path = "C:/FreeHandsStuff/BackUp/" + ituffObj.getLot() + "/" + ituffObj.getSum() + "/";
+                        File backUpFolder = new File(path);
+                        boolean mkdirs = true;
+                        if (!backUpFolder.exists()) {
+                            mkdirs = backUpFolder.mkdirs();
+                        }
+                        if (mkdirs && backUpFolder.list((file1, s) -> s.equals(fileName)).length == 0) {
+                            try {
+                                FileUtils.writeStringToFile(new File(path + fileName), ituffText.toString(), "UTF-8");
+                            } catch (IOException e) {
+                                e.printStackTrace();
+                            }
+                        }
+                        addItuff(ituffObj, true);
+                    }
+
+                }
+                for (int i = 0; i < existNames.size(); i++) {
+                    String fileName = existNames.get(i);
+                    if (!remoteNames.contains(fileName)) {
+                        removeItuff(fileName);
+                        i--;
+                    }
+                }
+            }
+
+            disconnect();
+            System.out.println(this.getName() + " Got ituffs");
+        }
+    }
+
+    private Vector<ChannelSftp.LsEntry> getRemoteNamesVector() {
         Vector<ChannelSftp.LsEntry> remoteFolderVector = null;
-        List<String> remoteNames;
-
-
         while (!myInterrupt) {
             waitTillAvailable();
             if (myInterrupt) {
-                return;
+                break;
             }
 
             if (connectToHost()) {
@@ -158,55 +217,13 @@ public class SingleHostProcess extends Thread {
                 try {
                     Thread.sleep(1500);
                 } catch (InterruptedException e) {
+                    currentThread().interrupt();
+                    myInterrupt();
                     break;
                 }
             }
         }
-
-        if (remoteFolderVector != null) {
-            remoteNames = remoteFolderVector.stream()
-                    .map(ChannelSftp.LsEntry::getFilename)
-                    .collect(Collectors.toList());
-            for (String fileName : remoteNames) {
-                if (!fileName.startsWith("Dut") || fileName.endsWith("~") || existNames.contains(fileName)) {
-                    continue;
-                }
-                StringBuilder ituffText = new StringBuilder();
-                try (InputStream is = sftpChannel.get(fileName); BufferedReader br = new BufferedReader(new InputStreamReader(is))) {
-                    String line;
-                    while ((line = br.readLine()) != null) {
-                        ituffText.append(line).append("\n");
-                    }
-                    if (ituffText.length() > 0) {
-                        ItuffObject ituffObj = new ItuffObject(fileName, ituffText.toString());
-                        String path = "C:/FreeHandsStuff/BackUp/" + ituffObj.getLot() + "/" + ituffObj.getSum() + "/";
-                        File backUpFolder = new File(path);
-                        boolean mkdirs = true;
-                        if (!backUpFolder.exists()) {
-                            mkdirs = backUpFolder.mkdirs();
-                        }
-                        if (mkdirs && backUpFolder.list((file1, s) -> s.equals(fileName)).length == 0) {
-                            FileUtils.writeStringToFile(new File(path + fileName), ituffText.toString(), "UTF-8");
-                        }
-                        addItuff(ituffObj, true);
-                    }
-                } catch (InterruptedIOException e) {
-                    break;
-                } catch (Exception e) {
-                    e.printStackTrace();
-                }
-            }
-            for (int i = 0; i < existNames.size(); i++) {
-                String fileName = existNames.get(i);
-                if (!remoteNames.contains(fileName)) {
-                    removeItuff(fileName);
-                    i--;
-                }
-            }
-        }
-
-        disconnect();
-        System.out.println(this.getName() + " Got ituffs");
+        return remoteFolderVector;
     }
 
     @SneakyThrows
@@ -216,6 +233,7 @@ public class SingleHostProcess extends Thread {
         String remoteListenerLocation = Main.auth.getProperty("remoteListenerLocation") + signature + ".sh";
 
         listenerCode = listenerCode.replaceFirst("switch", "switch" + signature).replaceFirst("tracker", "tracker" + signature);
+        listenerCode = listenerCode.replace("ssh ", "ssh " + Main.auth.getProperty("ssh_name"));
         //File signedListener = new File(signedListenerLocation);
         while (true) {
             waitTillAvailable();
@@ -223,7 +241,6 @@ public class SingleHostProcess extends Thread {
                 return;
             }
             if (connectToHost()) {
-                //FileUtils.writeStringToFile(signedListener, listenerCode);
                 try (InputStream is = sftpChannel.get(Main.auth.getProperty("keyLocation")); BufferedReader br = new BufferedReader(new InputStreamReader(is))) {
                     StringBuilder keyStr = new StringBuilder();
                     String line;
@@ -232,7 +249,6 @@ public class SingleHostProcess extends Thread {
                     }
                     BackController.addSSHKey(keyStr.toString());
 
-                   // sftpChannel.put(signedListenerLocation, remoteListenerLocation);
                     execChannel = (ChannelExec) session.openChannel("exec");
                     String command = "echo '" + listenerCode + "' > " + remoteListenerLocation + ";" +
                             "echo \"true\" > " + Main.auth.getProperty("switchLocation") + signature + ";" +
@@ -240,14 +256,14 @@ public class SingleHostProcess extends Thread {
                             "nohup " + remoteListenerLocation + " &>/dev/null";
                     execChannel.setCommand(command);
                     execChannel.connect();
-                    execChannel.disconnect();
-                    //signedListener.delete();
+                    disconnect();
                     break;
                 } catch (Exception e) {
                     e.printStackTrace();
                 }
             }
         }
+
     }
 
     public synchronized void removeItuff(String fileName) {
@@ -306,6 +322,7 @@ public class SingleHostProcess extends Thread {
                 sleep(10000);
             } catch (InterruptedException ex) {
                 currentThread().interrupt();
+                myInterrupt();
                 return;
             }
         }
@@ -332,6 +349,9 @@ public class SingleHostProcess extends Thread {
         if (sftpChannel != null && !sftpChannel.isClosed()) {
             sftpChannel.exit();
         }
+        if (execChannel != null && !execChannel.isClosed()) {
+            execChannel.disconnect();
+        }
         if (session != null && session.isConnected()) {
             session.disconnect();
         }
@@ -351,5 +371,72 @@ public class SingleHostProcess extends Thread {
         }
     }
 
+    public String merge(TextArea textArea, String mLoc) {
+        synchronized (mergeLock) {
+            StringBuilder mergedItuffs = new StringBuilder();
+            if (connectToHost()) {
+                for (ItuffObject ituffObject : ituffs) {
+                    String fileName = ituffObject.getFileName();
+                    if (fileName.toLowerCase().startsWith("comment")) {
+                        continue;
+                    }
+                    StringBuilder ituffText = new StringBuilder();
+                    fileName = Main.auth.getProperty("remoteFolder") + fileName;
+                    try (InputStream is = sftpChannel.get(fileName); BufferedReader br = new BufferedReader(new InputStreamReader(is))) {
+                        String line;
+                        while ((line = br.readLine()) != null) {
+                            ituffText.append(line).append("\n");
+                        }
+                    } catch (IOException | SftpException e) {
+                        break;
+                    }
+                    ItuffObject tempItuffObject = new ItuffObject(fileName.substring(fileName.lastIndexOf("/") + 1), ituffText.toString());
+                    String testName = "2_tname_network_ok";
+                    int startIndex = ituffText.indexOf(testName);
+                    if (startIndex >= 0) {
+                        ituffText.replace(startIndex, startIndex + testName.length(),
+                                "2_tname_MachineName\n2_mrslt_" + tempItuffObject.getHost().replaceAll("[\\D]*", "") + "\n" + testName);
+                    }
+                    testName = "3_curfbin_";
+                    String bin = tempItuffObject.getBin().replace(".", "");
+                    if (bin.equals("PASS")) {
+                        bin = "1100";
+                    }
+                    startIndex = ituffText.indexOf(testName);
+                    if (startIndex >= 0) {
+                        ituffText.replace(startIndex, ituffText.indexOf("\n", startIndex),
+                                testName + bin);
+                    }
+                    if (!tempItuffObject.getLocation().equals(mLoc)) {
+                        textArea.appendText("Different location in " + tempItuffObject.getFileName() + " on " + tempItuffObject.getHost() + "\n");
+                    }
+                    mergedItuffs.append(ituffText);
+                }
+            }
+
+            disconnect();
+            return mergedItuffs.toString();
+        }
+    }
+
+    public void removeAll() {
+        if (connectToHost()) {
+            for (ItuffObject ituffObject : ituffs) {
+                String fileName = ituffObject.getFileName();
+                if (fileName.toLowerCase().startsWith("comment")) {
+                    continue;
+                }
+                fileName = Main.auth.getProperty("remoteFolder") + fileName;
+                try {
+                    sftpChannel.rm(fileName);
+                } catch (SftpException e) {
+                    System.out.println(e.getMessage() + " " + e.getCause());
+                }
+            }
+            disconnect();
+        }
+    }
 
 }
+
+

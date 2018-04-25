@@ -19,6 +19,7 @@ public class ItuffObject implements Comparable<ItuffObject> {
     private String lot;
     private String sum;
     private String host;
+    private String location;
     private Date date;
     private String test;
 
@@ -44,6 +45,7 @@ public class ItuffObject implements Comparable<ItuffObject> {
         host = getValueFrom(ituffText, "_sysid_");
         test = getValueFrom(ituffText, "_prgnm_");
         date = getDateValue(ituffText);
+        location = getValueFrom(ituffText, "_lcode_");
     }
 
     @SneakyThrows

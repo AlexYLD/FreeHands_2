@@ -1,16 +1,21 @@
 package freeHands.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.jcraft.jsch.*;
 import freeHands.entity.CommentObj;
 import freeHands.entity.ItuffObject;
+import freeHands.gui.ConfirmWindow;
 import freeHands.gui.GraphWindow;
 import freeHands.gui.Main;
 import freeHands.model.SingleHostProcess;
 import javafx.collections.FXCollections;
 import javafx.collections.transformation.SortedList;
+import javafx.scene.control.Button;
+import javafx.scene.control.TextArea;
 import lombok.SneakyThrows;
 import org.apache.commons.io.FileUtils;
 import org.apache.poi.ss.usermodel.*;
+import org.apache.poi.ss.usermodel.Font;
 import org.apache.poi.xssf.usermodel.XSSFCreationHelper;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 
@@ -18,7 +23,10 @@ import java.io.*;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
+import java.util.List;
 import java.util.stream.Collectors;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
 
 public class BackController {
     public static Map<String, SortedList<ItuffObject>> ituffs = new HashMap<>();
@@ -73,15 +81,28 @@ public class BackController {
     }
 
     @SneakyThrows
-    public static void stopProcesses() {
+    static void stopProcesses() {
         for (SingleHostProcess process : processes) {
             process.interrupt();
+            process.myInterrupt();
         }
 
         ituffs.clear();
         listItuffs.clear();
         warnings.clear();
         processes.clear();
+        FileUtils.write(new File(Main.auth.getProperty("authorized_keys")), "", false);
+    }
+
+    @SneakyThrows
+    public static void exit() {
+        for (SingleHostProcess process : processes) {
+            process.interrupt();
+            process.myInterrupt();
+        }
+        for (SingleHostProcess process : processes) {
+            while (process.isAlive()) ;
+        }
         FileUtils.write(new File(Main.auth.getProperty("authorized_keys")), "", false);
     }
 
@@ -161,11 +182,10 @@ public class BackController {
             columnNum += 2;
         }
 
-        Set<String> binsSet = listItuffs.values().stream()
+        List<String> bins = listItuffs.values().stream()
                 .map(ItuffObject::getBin)
                 .filter(b -> !b.equals("PASS"))
-                .collect(Collectors.toSet());
-        List<String> bins = new ArrayList<>(binsSet);
+                .distinct().collect(Collectors.toList());
 
         Row nameRow = sheetBins.getRow(21) == null ? sheetBins.createRow(21) : sheetBins.getRow(21);
         Row passRow = sheetBins.getRow(22) == null ? sheetBins.createRow(22) : sheetBins.getRow(22);
@@ -388,6 +408,7 @@ public class BackController {
         if (!Main.controller.getWarningButton().getStyleClass().contains("warning-red") && !warnings.isEmpty()) {
             Main.controller.getWarningButton().getStyleClass().removeAll("warning-red", "warning-green");
             Main.controller.getWarningButton().getStyleClass().add("warning-red");
+            Main.controller.mergeButton.setDisable(true);
         }
 
         if (Main.controller.prodModeV.isSelected() && errCount != warnings.size()) {
@@ -438,4 +459,123 @@ public class BackController {
     public synchronized static void addSSHKey(String key) throws IOException {
         FileUtils.write(new File(Main.auth.getProperty("authorized_keys")), key + "\n", true);
     }
+
+    public static void merge(Button mergeButton, TextArea textArea, String mQty, String mLoc) {
+        if (mLoc.equals("") || mQty.equals("")) {
+            textArea.appendText("Fill all fields!\n");
+            return;
+        }
+
+        textArea.appendText("Collecting ituffs\n");
+        StringBuilder monoItuffs = new StringBuilder();
+        for (SingleHostProcess process : processes) {
+            String merge = process.merge(textArea, mLoc);
+            if (merge.length() == 0) {
+                textArea.appendText("Couldn't get ituffs from " + process.getName() + "\n");
+            } else {
+                monoItuffs.append(merge);
+                textArea.appendText("Got ituffs from " + process.getName() + "\n");
+            }
+        }
+        textArea.appendText("Collected\n");
+
+        String[] ituffArr = monoItuffs.toString().split("7_lend");
+        if (Integer.parseInt(mQty) != (ituffArr.length - 1)) {
+            textArea.appendText("Wrong quantity!(" + (ituffArr.length - 1) + ")\n");
+            return;
+        }
+
+        if (!ConfirmWindow.display("Merge", "Upload results?")) {
+            textArea.appendText("Merge canceled\n");
+            return;
+        }
+
+        String header = monoItuffs.substring(0, monoItuffs.indexOf("3_lsep"));
+
+        StringBuilder finalMerge = new StringBuilder(header);
+
+        for (int i = 0; i < ituffArr.length - 1; i++) {
+            ituffArr[i] = ituffArr[i].replaceAll("3_prtnm_[\\d]+", "3_prtnm_" + (i + 1));
+            finalMerge.append(ituffArr[i], ituffArr[i].indexOf("3_lsep"), ituffArr[i].indexOf("3_lend"));
+        }
+        String lastItuff = ituffArr[ituffArr.length - 2] + "7_lend";
+        lastItuff = lastItuff.replaceAll("4_total_[\\d]+", "4_total_" + (ituffArr.length - 1));
+        finalMerge.append(lastItuff, lastItuff.indexOf("3_lend"), lastItuff.length());
+
+        File zip = new File(Main.auth.getProperty("merge_path") + lotNum + "_" + mLoc + "_" + sum + "_" + "ALL.zip");
+
+        try (ZipOutputStream out = new ZipOutputStream(new FileOutputStream(zip))) {
+            ZipEntry e = new ZipEntry(lotNum + "_" + mLoc + "_" + sum + "_" + "ALL");
+            out.putNextEntry(e);
+            byte[] data = finalMerge.toString().getBytes();
+            out.write(data, 0, data.length);
+            out.closeEntry();
+        } catch (IOException e) {
+            textArea.appendText("Couldn't zip ituffs due to" + e.getMessage() + "\n");
+            return;
+        }
+
+        textArea.appendText("Ziped ituffs successfully\n");
+        if (!uploadToMidas(zip, textArea)) {
+            return;
+        }
+        textArea.appendText("Uploaded to Midas successfully");
+        mergeButton.setDisable(true);
+        for (SingleHostProcess process : processes) {
+            process.removeAll();
+        }
+        Main.controller.stopProcesses();
+    }
+
+    private static boolean uploadToMidas(File zip, TextArea textArea) {
+        Session session = null;
+        ChannelSftp sftpChannel = null;
+        boolean res = true;
+
+        try {// connection
+            JSch jsch = new JSch();
+            session = jsch.getSession(Main.auth.getProperty("midas_user"), Main.auth.getProperty("midas_host"));
+            session.setPassword(Main.auth.getProperty("midas_password"));
+            session.setConfig("StrictHostKeyChecking", "no");
+            session.connect();
+            sftpChannel = (ChannelSftp) session.openChannel("sftp");
+            sftpChannel.connect();
+            // connected
+        } catch (JSchException e) {
+            if (sftpChannel != null && !sftpChannel.isClosed()) {
+                sftpChannel.exit();
+            }
+            if (session != null && session.isConnected()) {
+                session.disconnect();
+            }
+            textArea.appendText("Failed to upload due to " + e.getMessage());
+            return false;
+        }
+        File sig = new File(zip.getParent() + "/" + zip.getName().replace("zip", "fin"));
+        try {
+            sig.createNewFile();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+
+        try {
+            sftpChannel.put(zip.getPath(), Main.auth.getProperty("midas_zip_path"));
+            textArea.appendText("Zip uploaded\n");
+            sftpChannel.put(sig.getPath(), Main.auth.getProperty("midas_sig_path"));
+            textArea.appendText("Signal uploaded\n");
+            sig.delete();
+        } catch (SftpException e) {
+            textArea.appendText("Couldn't upload due to " + e.getMessage());
+            res = false;
+        }
+        if (!sftpChannel.isClosed()) {
+            sftpChannel.exit();
+        }
+        if (session.isConnected()) {
+            session.disconnect();
+        }
+        return res;
+    }
 }
+
+

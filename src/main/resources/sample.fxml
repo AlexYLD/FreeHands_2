@@ -3,8 +3,6 @@
 <?import javafx.scene.control.*?>
 <?import javafx.scene.layout.*?>
 <?import java.lang.String?>
-
-<?import javafx.scene.chart.BarChart?>
 <VBox fx:controller="freeHands.controller.FrontController" xmlns:fx="http://javafx.com/fxml" alignment="TOP_LEFT"
       spacing="10">
 
@@ -44,17 +42,16 @@
     </GridPane>
 
     <HBox alignment="CENTER_LEFT" spacing="3">
-        <Button text="Save" fx:id="saveButton" disable="true"/>
         <Button text="Refresh" fx:id="refreshButton" disable="true"/>
         <Button text="Clear" fx:id="clearButton" disable="true"/>
         <Button text="Graph" fx:id="showGraphButton" disable="true"/>
         <Separator orientation="HORIZONTAL" HBox.hgrow="ALWAYS"/>
+        <Button text="Save" fx:id="saveButton" disable="true"/>
+        <Button text="Merge" fx:id="mergeButton" disable="true"/>
     </HBox>
 
     <!--Table-->
-    <GridPane styleClass="grid-table" fx:id="listsBox"  VBox.vgrow="ALWAYS" minHeight="110">
-
-    </GridPane>
+    <GridPane styleClass="grid-table" fx:id="listsBox" VBox.vgrow="ALWAYS" minHeight="110"></GridPane>
 
     <HBox spacing="5" alignment="CENTER">
         <Label text="PASS:" textFill="#67b55b" style="-fx-font-weight: bold"/>

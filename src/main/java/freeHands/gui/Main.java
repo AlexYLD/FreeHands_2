@@ -27,7 +27,7 @@ public class Main extends Application {
         scene.getStylesheets().add("/myStyle.css");
         primaryStage.setScene(scene);
         primaryStage.show();
-        primaryStage.setOnCloseRequest(e-> BackController.stopProcesses());
+        primaryStage.setOnCloseRequest(e-> BackController.exit());
 
     }
 

@@ -3,6 +3,7 @@ package freeHands.controller;
 import freeHands.entity.ItuffObject;
 import freeHands.gui.GraphWindow;
 import freeHands.gui.Main;
+import freeHands.gui.MergeWindow;
 import freeHands.gui.WarningsWindow;
 import javafx.collections.ListChangeListener;
 import javafx.fxml.Initializable;
@@ -36,6 +37,7 @@ public class FrontController implements Initializable {
     public Button saveButton;
     public Button refreshButton;
     public Button showGraphButton;
+    public Button mergeButton;
     public ComboBox<String> commentHost;
     public ComboBox<SetUp> cellChooser;
     public ComboBox<Integer> fromHour;
@@ -61,6 +63,7 @@ public class FrontController implements Initializable {
     public Region downTopReg;
     private GraphWindow graph;
     private WarningsWindow warningsWindow;
+    private MergeWindow mergeWindow;
 
 
     public void initialize(URL location, ResourceBundle resources) {
@@ -98,7 +101,16 @@ public class FrontController implements Initializable {
         saveButton.setOnAction(e -> saveExcel());
         refreshButton.setOnAction(e -> refresh());
         showGraphButton.setOnAction(e -> showGraph());
+        mergeButton.setOnAction(e -> showMergeWindow());
 
+    }
+
+    void showMergeWindow() {
+        if (!mergeWindow.getWindow().isShowing()) {
+            mergeWindow.display();
+        } else {
+            mergeWindow.hide();
+        }
     }
 
     private void showGraph() {
@@ -118,6 +130,9 @@ public class FrontController implements Initializable {
         saveButton.setDisable(true);
         BackController.saveExcel(commentHost.getItems());
         saveButton.setDisable(false);
+        if (checkingV.isSelected() && BackController.warnings.isEmpty()) {
+            mergeButton.setDisable(false);
+        }
     }
 
     private void addComment() {
@@ -128,14 +143,14 @@ public class FrontController implements Initializable {
         }
     }
 
-    public synchronized void showWarnings() {
+    synchronized void showWarnings() {
         if (!warningsWindow.getWindow().isShowing()) {
             warningsWindow.display();
         }
     }
 
 
-    private void stopProcesses() {
+    void stopProcesses() {
         if (graph.getWindow().isShowing()) {
             showGraph();
         }
@@ -158,6 +173,7 @@ public class FrontController implements Initializable {
         refreshButton.setDisable(true);
         showGraphButton.setDisable(true);
         clearButton.setDisable(true);
+        mergeButton.setDisable(true);
         failLabel.setText("0");
         passLabel.setText("0");
         totalLabel.setText("0");
@@ -265,6 +281,7 @@ public class FrontController implements Initializable {
         graph = new GraphWindow(commentHost.getItems(), getCellName());
         graph.getWindow().initOwner(showGraphButton.getScene().getWindow());
         warningsWindow = new WarningsWindow(BackController.warnings, getCellName());
+        mergeWindow = new MergeWindow();
         commentHost.getSelectionModel().select(0);
         warningButton.setDisable(false);
         submitButton.setDisable(false);
@@ -274,6 +291,7 @@ public class FrontController implements Initializable {
         refreshButton.setDisable(false);
         showGraphButton.setDisable(false);
         clearButton.setDisable(false);
+
     }
 
     public String getCellName() {
@@ -289,6 +307,7 @@ public class FrontController implements Initializable {
         passLabel.setText(String.valueOf(totalPass));
         failLabel.setText(String.valueOf(BackController.listItuffs.size() - totalPass));
         graph.refillGraphData();
+        mergeButton.setDisable(true);
     }
 
     private void saveAll() {
