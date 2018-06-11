@@ -1,3 +1,4 @@
+//Created by Alexey Yarygin
 package freeHands.gui;
 
 import freeHands.controller.BackController;

@@ -1,3 +1,4 @@
+//Created by Alexey Yarygin
 package freeHands.model;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -14,6 +15,7 @@ import lombok.Getter;
 import lombok.Setter;
 import lombok.SneakyThrows;
 import org.apache.commons.io.FileUtils;
+import org.apache.commons.io.IOUtils;
 
 import java.io.*;
 import java.net.InetAddress;
@@ -34,15 +36,17 @@ public class SingleHostProcess extends Thread {
     private ChannelSftp sftpChannel;
     private ChannelExec execChannel;
     ObservableList<ItuffObject> ituffs;
-    private List<String> existNames;
-    private List<String> notOnHostNames;
-    private boolean myInterrupt;
+    private List<String> existNames;//ituffs on this host
+    private List<String> notOnHostNames;//ituffs from this host that somehow are now on another.
+    private boolean myInterrupt;//Because I don't like regular interrupt.
     private String signature;
 
+    //Prevents double connection.
     private final Object mergeLock = new Object();
 
 
     public SingleHostProcess(String host) {
+        //Using hostname or IP.
         if (host.contains(" ")) {
             this.host = host.substring(host.indexOf(" ") + 1);
             this.setName(host.substring(0, host.indexOf(" ")));
@@ -50,11 +54,14 @@ public class SingleHostProcess extends Thread {
             this.host = host + ".iil.intel.com";
             this.setName(host);
         }
+
+        //Signature of this pc in script name so few apps can watch over one machine.
         try {
             signature = "_" + InetAddress.getLocalHost().getHostName() + String.valueOf(System.currentTimeMillis());
         } catch (UnknownHostException e) {
             signature = "_" + "MyPc" + String.valueOf(System.currentTimeMillis());
         }
+
         myInterrupt = false;
         from.setDate(new Date(0));
         to.setDate(new Date(Long.parseLong("9999999999999")));
@@ -63,6 +70,7 @@ public class SingleHostProcess extends Thread {
         ituffs = FXCollections.observableArrayList();
     }
 
+    //Same as previous constructor except for date.
     public SingleHostProcess(String host, LocalDateTime fromDateTime, LocalDateTime toDateTime) {
         if (host.contains(" ")) {
             this.host = host.substring(host.indexOf(" "));
@@ -71,7 +79,13 @@ public class SingleHostProcess extends Thread {
             this.host = host + ".iil.intel.com";
             this.setName(host);
         }
-        signature = "_" + this.getName() + String.valueOf(System.currentTimeMillis());
+
+        try {
+            signature = "_" + InetAddress.getLocalHost().getHostName() + String.valueOf(System.currentTimeMillis());
+        } catch (UnknownHostException e) {
+            signature = "_" + "MyPc" + String.valueOf(System.currentTimeMillis());
+        }
+
         myInterrupt = false;
         from.setDate(new Date(fromDateTime.atZone(ZoneId.of("Asia/Jerusalem")).toInstant().toEpochMilli()));
         to.setDate(new Date(toDateTime.atZone(ZoneId.of("Asia/Jerusalem")).toInstant().toEpochMilli()));
@@ -82,6 +96,7 @@ public class SingleHostProcess extends Thread {
 
     @Override
     public void run() {
+        //Notifications folder
         File flagsFolder = new File(Main.auth.getProperty("flagsFolder"));
 
         firstConnect();
@@ -89,18 +104,26 @@ public class SingleHostProcess extends Thread {
             return;
         }
         getComments();
-        checkAndTake();
+        checkAndTake();//getting new ituffs
 
+        List<File> list;
+        File file;
+        boolean found;
 
         while (!myInterrupt) {
-            List<File> list = new ArrayList(Arrays.asList(flagsFolder.listFiles()));
+            //Listening
+            found = false;
+            list = new ArrayList(Arrays.asList(flagsFolder.listFiles()));
             for (int i = 0; i < list.size(); i++) {
-                File file = list.get(i);
-                if (file.getName().toLowerCase().startsWith(this.getName().toLowerCase())) {
+                file = list.get(i);
+                if (!found && file.getName().toLowerCase().startsWith(this.getName().toLowerCase())) {
                     checkAndTake();
-                    list.remove(file);
+                    found = true;
+                }
+                if (found && file.getName().toLowerCase().startsWith(this.getName().toLowerCase())) {
+                    list.remove(i);
                     file.delete();
-                    break;
+                    i--;
                 }
             }
             if (!myInterrupt) {
@@ -114,14 +137,13 @@ public class SingleHostProcess extends Thread {
             }
         }
 
-
+        //Closing and disconnecting
         if (!connectToHost()) {
             return;
         }
         try {
             execChannel = (ChannelExec) session.openChannel("exec");
-            execChannel.setCommand("rm " + Main.auth.getProperty("switchLocation") + signature + ";"
-                    + "rm " + Main.auth.getProperty("remoteListenerLocation") + signature + ".sh");
+            execChannel.setCommand("rm " + Main.auth.getProperty("remoteListenerLocation") + signature + ".sh");
             execChannel.connect();
             System.out.println(this.getName() + " Tracker stopped");
             while (!execChannel.isClosed()) {
@@ -150,7 +172,7 @@ public class SingleHostProcess extends Thread {
             if (remoteFolderVector != null) {
                 remoteNames = remoteFolderVector.stream()
                         .map(ChannelSftp.LsEntry::getFilename)
-                        .collect(Collectors.toList());
+                        .collect(Collectors.toList());//getting file names from linux
                 for (String fileName : remoteNames) {
                     if (!fileName.startsWith("Dut") || fileName.endsWith("~") || existNames.contains(fileName)) {
                         continue;
@@ -164,9 +186,16 @@ public class SingleHostProcess extends Thread {
                     } catch (IOException | SftpException e) {
                         break;
                     }
-                    if (ituffText.length() > 0) {
+                    if (ituffText.length() == 0) {
+                        Main.controller.addWarning("File " + fileName + " on " + this.getName() + " is empty");
+                        existNames.add(fileName);
+                    } else {
                         ItuffObject ituffObj = new ItuffObject(fileName, ituffText.toString());
-                        String path = "C:/FreeHandsStuff/BackUp/" + ituffObj.getLot() + "/" + ituffObj.getSum() + "/";
+                        if (!ituffText.toString().matches("[\\s\\S]*7_lend[\\s]*")) {
+                            Main.controller.addWarning("File " + fileName + " on " + this.getName() + " is damaged");
+                        }
+                        //Back up ituff
+                        String path = Main.auth.getProperty("backUpFolder") + ituffObj.getLot() + "/" + ituffObj.getSum() + "/";
                         File backUpFolder = new File(path);
                         boolean mkdirs = true;
                         if (!backUpFolder.exists()) {
@@ -183,6 +212,7 @@ public class SingleHostProcess extends Thread {
                     }
 
                 }
+                //Checking if some ituffs were removed
                 for (int i = 0; i < existNames.size(); i++) {
                     String fileName = existNames.get(i);
                     if (!remoteNames.contains(fileName)) {
@@ -226,15 +256,16 @@ public class SingleHostProcess extends Thread {
         return remoteFolderVector;
     }
 
+    //Puts listener bash script in linux machine and executes it.
     @SneakyThrows
     private void firstConnect() {
-        String listenerCode = FileUtils.readFileToString(new File(Main.class.getClassLoader().getResource("ituff_tracker").getFile()));
-        //String signedListenerLocation = Main.auth.getProperty("listenerLocation") + signature + ".sh";
+        StringWriter writer = new StringWriter();
+        IOUtils.copy(Main.class.getResourceAsStream("/ituff_tracker"), writer);
+        String listenerCode = writer.toString();
         String remoteListenerLocation = Main.auth.getProperty("remoteListenerLocation") + signature + ".sh";
 
-        listenerCode = listenerCode.replaceFirst("switch", "switch" + signature).replaceFirst("tracker", "tracker" + signature);
+        listenerCode = listenerCode.replaceAll("tracker", "tracker" + signature + ".sh");
         listenerCode = listenerCode.replace("ssh ", "ssh " + Main.auth.getProperty("ssh_name"));
-        //File signedListener = new File(signedListenerLocation);
         while (true) {
             waitTillAvailable();
             if (myInterrupt) {
@@ -251,7 +282,6 @@ public class SingleHostProcess extends Thread {
 
                     execChannel = (ChannelExec) session.openChannel("exec");
                     String command = "echo '" + listenerCode + "' > " + remoteListenerLocation + ";" +
-                            "echo \"true\" > " + Main.auth.getProperty("switchLocation") + signature + ";" +
                             "chmod +x " + remoteListenerLocation + ";" +
                             "nohup " + remoteListenerLocation + " &>/dev/null";
                     execChannel.setCommand(command);
@@ -267,13 +297,14 @@ public class SingleHostProcess extends Thread {
     }
 
     public synchronized void removeItuff(String fileName) {
+        //Platform.runLater is JavaFx's safe way of changing GUI dinamicly
         Platform.runLater(() -> {
             Iterator<ItuffObject> iterator = ituffs.iterator();
             while (iterator.hasNext()) {
                 ItuffObject ituff = iterator.next();
                 if (ituff.getFileName().equals(fileName)) {
                     iterator.remove();
-                    BackController.removeItuff(fileName);
+                    BackController.removeItuff(ituff);
                     return;
                 }
             }
@@ -283,30 +314,35 @@ public class SingleHostProcess extends Thread {
     }
 
     public synchronized void addItuff(ItuffObject ituffObj, boolean isOnHost) {
-        if (ituffObj.compareTo(from) > 0 && ituffObj.compareTo(to) < 0) {
-            if (existNames.contains(ituffObj.getFileName()) || notOnHostNames.contains(ituffObj.getFileName())) {
-                return;
-            }
+        if (ituffObj.compareTo(from) < 0 || ituffObj.compareTo(to) > 0) {
+            return;
+        }
 
-            if (!ituffObj.getHost().equalsIgnoreCase(this.getName())) {
-                BackController.addLostItuff(ituffObj);
-                existNames.add(ituffObj.getFileName());
-                return;
-            }
+        if (existNames.contains(ituffObj.getFileName()) || notOnHostNames.contains(ituffObj.getFileName())) {
+            return;
+        }
 
-            Platform.runLater(() -> ituffs.add(ituffObj));
+        if (!ituffObj.getHost().equalsIgnoreCase(this.getName())) {
+            BackController.addLostItuff(ituffObj);
+            existNames.add(ituffObj.getFileName());
+            return;
+        }
 
-            if (!ituffObj.getFileName().startsWith("comment")) {
-                Platform.runLater(() -> BackController.addToAll(ituffObj));
-                if (isOnHost) {
-                    existNames.add(ituffObj.getFileName());
-                } else {
-                    notOnHostNames.add(ituffObj.getFileName());
-                }
-            }
+        Platform.runLater(() -> ituffs.add(ituffObj));
+
+        if (ituffObj.getFileName().startsWith("comment")) {
+            return;
+        }
+
+        Platform.runLater(() -> BackController.addToAll(ituffObj));
+        if (isOnHost) {
+            existNames.add(ituffObj.getFileName());
+        } else {
+            notOnHostNames.add(ituffObj.getFileName());
         }
     }
 
+    //Pinging host
     private void waitTillAvailable() {
         while (!myInterrupt) {
             try {
@@ -339,7 +375,7 @@ public class SingleHostProcess extends Thread {
             sftpChannel.connect();
             return true;// connected
         } catch (JSchException e) {
-            e.printStackTrace();
+            System.err.println(e.getMessage() + "\n" + e.getCause());
             disconnect();
             return false;
         }
@@ -357,6 +393,7 @@ public class SingleHostProcess extends Thread {
         }
     }
 
+    //Runs when loads
     private void getComments() {
         ObjectMapper mapper = new ObjectMapper();
         File commentFolder = new File(Main.auth.getProperty("commentsFolder") + this.getName().toLowerCase());
@@ -371,6 +408,7 @@ public class SingleHostProcess extends Thread {
         }
     }
 
+    //Compressing all ituffs to one. Also checking some parameters.
     public String merge(TextArea textArea, String mLoc) {
         synchronized (mergeLock) {
             StringBuilder mergedItuffs = new StringBuilder();
@@ -389,6 +427,10 @@ public class SingleHostProcess extends Thread {
                         }
                     } catch (IOException | SftpException e) {
                         break;
+                    }
+                    if (!ituffText.toString().matches("[\\s\\S]*7_lend[\\s]*")) {
+                        textArea.appendText(fileName + " on " + this.getName() + " is damaged\n");
+                        continue;
                     }
                     ItuffObject tempItuffObject = new ItuffObject(fileName.substring(fileName.lastIndexOf("/") + 1), ituffText.toString());
                     String testName = "2_tname_network_ok";
@@ -419,6 +461,7 @@ public class SingleHostProcess extends Thread {
         }
     }
 
+    //Removing ituffs after merge.
     public void removeAll() {
         if (connectToHost()) {
             for (ItuffObject ituffObject : ituffs) {

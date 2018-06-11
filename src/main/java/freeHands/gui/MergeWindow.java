@@ -1,8 +1,7 @@
+//Created by Alexey Yarygin
 package freeHands.gui;
 
 import freeHands.controller.BackController;
-import javafx.beans.value.ChangeListener;
-import javafx.beans.value.ObservableValue;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Scene;
@@ -31,6 +30,7 @@ public class MergeWindow {
         fieldsBox.setAlignment(Pos.CENTER_LEFT);
 
         TextField qty = new TextField();
+        //Only digits can be written.
         qty.textProperty().addListener((observable, oldValue, newValue) -> {
             if (!newValue.matches("\\d*")) {
                 qty.setText(newValue.replaceAll("[^\\d]", ""));
@@ -41,15 +41,19 @@ public class MergeWindow {
         TextField loc = new TextField();
         loc.setMaxWidth(100);
 
+        TextField end = new TextField();
+        end.setMaxWidth(100);
+
         fieldsBox.getChildren().addAll(
                 new Label("QTY:"), qty,
-                new Label("LOC:"), loc
+                new Label("LOC:"), loc,
+                new Label("Ending"),end
         );
 
         logs = new TextArea();
         logs.setEditable(false);
         Button mergeButton = new Button("Merge");
-        mergeButton.setOnAction(e -> BackController.merge(mergeButton, logs, qty.getText(), loc.getText()));
+        mergeButton.setOnAction(e -> BackController.merge(mergeButton, logs, qty.getText(), loc.getText(),end.getText()));
         mainVbox.getChildren().addAll(fieldsBox, logs, mergeButton);
         Scene scene = new Scene(mainVbox, 700, 300);
         scene.getStylesheets().add("/myStyle.css");

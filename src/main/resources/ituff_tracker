@@ -1,6 +1,6 @@
 #!/bin/bash
 mylist=$(ls /ppv/tools/DARC/Logs/ituffs/ | grep Dut_)
-while [ "$(cat /ppv/tools/DARC/switch)" == "true" ]
+while [ -e /ppv/tools/DARC/ituff_tracker ]
 do
 sleep 3
 my2list=$(ls /ppv/tools/DARC/Logs/ituffs/ | grep Dut_)
@@ -13,4 +13,4 @@ ssh  "touch "/cygdrive/c/freehandsstuff/flags/"$(hostname)\ $(date +"%s")"""
 fi
 mylist="$my2list"
 done
-rm /ppv/tools/DARC/ituff_tracker.sh
+rm /ppv/tools/DARC/ituff_tracker

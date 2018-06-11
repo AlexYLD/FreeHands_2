@@ -1,3 +1,4 @@
+//Created by Alexey Yarygin
 package freeHands.gui;
 
 import freeHands.controller.BackController;
@@ -10,6 +11,11 @@ import javafx.stage.Stage;
 
 import java.util.Properties;
 
+/*
+Only initializing of JavaFX GUI in this class.
+GUI related logic is in FrontController
+Inner logic is in BackController
+*/
 public class Main extends Application {
     public static Properties auth = new Properties();
     public static FrontController controller;
@@ -27,7 +33,7 @@ public class Main extends Application {
         scene.getStylesheets().add("/myStyle.css");
         primaryStage.setScene(scene);
         primaryStage.show();
-        primaryStage.setOnCloseRequest(e-> BackController.exit());
+        primaryStage.setOnCloseRequest(e -> BackController.exit());
 
     }
 

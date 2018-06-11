@@ -1,3 +1,4 @@
+//Created by Alexey Yarygin
 package freeHands.entity;
 
 import lombok.Data;
@@ -22,6 +23,7 @@ public class ItuffObject implements Comparable<ItuffObject> {
     private String location;
     private Date date;
     private String test;
+    private boolean isGolden;
 
 
     public ItuffObject(String fileName, String ituffText) {
@@ -46,17 +48,35 @@ public class ItuffObject implements Comparable<ItuffObject> {
         test = getValueFrom(ituffText, "_prgnm_");
         date = getDateValue(ituffText);
         location = getValueFrom(ituffText, "_lcode_");
+
+        isGolden = getIfGolden(ituffText);/*(ituffText, "_comnt_").equalsIgnoreCase("regular_unit_test"));*/
+    }
+
+    private boolean getIfGolden(String ituffText) {
+        String res;
+        String search = "_comnt_";
+        int startIndex = ituffText.lastIndexOf(search) + search.length();
+        if (startIndex == -1 + search.length()) {
+            return false;
+        }
+        res = ituffText.substring(startIndex, ituffText.indexOf("\n", startIndex));
+
+        return res.equalsIgnoreCase("golden_unit_test");
     }
 
     @SneakyThrows
     private Date getDateValue(String ituffText) {
+        SimpleDateFormat sdf;
+        String dateStr;
         String searchDate = getValueFrom(ituffText, "_enddate_");
         if (!searchDate.equals("not found")) {
-            String dateStr = searchDate.substring(0, 14);
-            SimpleDateFormat sdf = new SimpleDateFormat("yyyyMMddHHmmss");
+            sdf = new SimpleDateFormat("yyyyMMddHHmmss");
+            dateStr = searchDate.substring(0, 14);
             return sdf.parse(dateStr);
         } else {
-            return new Date();
+            sdf = new SimpleDateFormat("ddMMyyyyHHmmss");
+            dateStr = fileName.substring(5, fileName.lastIndexOf("_")).replaceAll("_", "");
+            return sdf.parse(dateStr);
         }
     }
 
@@ -65,7 +85,7 @@ public class ItuffObject implements Comparable<ItuffObject> {
         String ibin = getValueFrom(ituffText, "_curibin_");
         String bin = ibin + "." + fbin;
 
-        if (bin.equals("1.100")) {
+        if (bin.equals("1.100")||bin.equals("1.0")) {
             bin = "PASS";
         }
         return bin;

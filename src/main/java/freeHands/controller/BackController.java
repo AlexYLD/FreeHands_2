@@ -1,3 +1,4 @@
+//Created by Alexey Yarygin
 package freeHands.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -8,14 +9,12 @@ import freeHands.gui.ConfirmWindow;
 import freeHands.gui.GraphWindow;
 import freeHands.gui.Main;
 import freeHands.model.SingleHostProcess;
-import javafx.collections.FXCollections;
 import javafx.collections.transformation.SortedList;
 import javafx.scene.control.Button;
 import javafx.scene.control.TextArea;
 import lombok.SneakyThrows;
 import org.apache.commons.io.FileUtils;
 import org.apache.poi.ss.usermodel.*;
-import org.apache.poi.ss.usermodel.Font;
 import org.apache.poi.xssf.usermodel.XSSFCreationHelper;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 
@@ -23,16 +22,15 @@ import java.io.*;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
-import java.util.List;
 import java.util.stream.Collectors;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
 public class BackController {
-    public static Map<String, SortedList<ItuffObject>> ituffs = new HashMap<>();
-    static Map<String, ItuffObject> listItuffs = new HashMap<>();
-    static List<String> warnings = FXCollections.observableArrayList();
-    private static Set<SingleHostProcess> processes = new HashSet<>();
+    public static Map<String, SortedList<ItuffObject>> ituffs = new HashMap<>();//<Hostname, list of ituffs>
+    static Map<String, ItuffObject> listItuffs = new HashMap<>();//<file name, ituff object>
+
+    private static Set<SingleHostProcess> processes = new HashSet<>();//set of threads for each host
 
     private static String lotNum;
     private static String sum;
@@ -55,6 +53,7 @@ public class BackController {
         addProcess(process);
     }
 
+    //Adding list for each host and starting process
     private static void addProcess(SingleHostProcess process) {
         SortedList<ItuffObject> sortedList = new SortedList<>(process.getItuffs());
         sortedList.setComparator(ItuffObject::compareTo);
@@ -72,6 +71,7 @@ public class BackController {
                 CommentObj commentObj = new CommentObj(text, host);
                 process.addItuff(commentObj, false);
                 String path;
+                //Storing comment
                 path = Main.auth.getProperty("commentsFolder") + host.toLowerCase();
                 new File(path).mkdirs();
                 mapper.writeValue(new File(path + "/comment" + commentObj.getHost() + System.currentTimeMillis()), commentObj);
@@ -89,7 +89,6 @@ public class BackController {
 
         ituffs.clear();
         listItuffs.clear();
-        warnings.clear();
         processes.clear();
         FileUtils.write(new File(Main.auth.getProperty("authorized_keys")), "", false);
     }
@@ -106,6 +105,7 @@ public class BackController {
         FileUtils.write(new File(Main.auth.getProperty("authorized_keys")), "", false);
     }
 
+    //POI API
     @SneakyThrows
     static void saveExcel(List<String> hosts) {
         File binTableFolder = new File(Main.auth.getProperty("binTableFolder"));
@@ -123,18 +123,22 @@ public class BackController {
             workbook = new XSSFWorkbook();
         }
 
+
         Sheet sheetBins;
         String sheetName = lotNum + "-" + sum;
 
+
         while (workbook.getSheet(sheetName) != null) {
-            sheetName = sheetName + "-another";
+            sheetName = sheetName + "-copy";
         }
         sheetBins = workbook.createSheet(sheetName);
-
+        CreationHelper factory = workbook.getCreationHelper();
+        Drawing drawing = sheetBins.createDrawingPatriarch();
+        Comment cellComment;
 
         Map<String, CellStyle> styles = getStyles(workbook);
 
-
+        //Rows... cells... excitement (o_O) ...
         int columnNum = 1;
         int rowNum;
         List<ItuffObject> list;
@@ -170,6 +174,10 @@ public class BackController {
 
                 cell.setCellType(CellType.STRING);
                 cell.setCellValue(list.get(rowNum - 1).getBin());
+
+                cellComment = drawing.createCellComment(factory.createClientAnchor());
+                cellComment.setString(factory.createRichTextString(list.get(rowNum - 1).getDate().toString()));
+                cell.setCellComment(cellComment);
 
                 if (cell.getStringCellValue().equals("PASS")) {
                     cell.setCellStyle(styles.get("greenStyle"));
@@ -287,6 +295,7 @@ public class BackController {
         }
     }
 
+    //Styles for excel.
     private static Map<String, CellStyle> getStyles(Workbook workbook) {
         Map<String, CellStyle> styles = new HashMap<>();
         Font whitFont = workbook.createFont();
@@ -388,33 +397,39 @@ public class BackController {
         return styles;
     }
 
+    //Adding ituff to lists
     public synchronized static void addToAll(ItuffObject ituffObj) {
-        int errCount = warnings.size();
+        int errCount = FrontController.warnings.size();
         if (listItuffs.keySet().contains(ituffObj.getFileName())) {
             return;
         }
         if (!ituffObj.getStrUlt().equals("No ULT") && listItuffs.values().contains(ituffObj)) {
             List<ItuffObject> list = new ArrayList<>(listItuffs.values());
             ItuffObject ituff = list.get(list.indexOf(ituffObj));
-            warnings.add("Duplicates: " + ituff.getFileName() + " on " + ituff.getHost() + " and " + ituffObj.getFileName() + " on " + ituffObj.getHost());
+            Main.controller.addWarning("Duplicates: " + ituff.getFileName() + "(" + ituff.getBin() +
+                    ") on " + ituff.getHost() + " and " + ituffObj.getFileName() + "(" + ituffObj.getBin() + ") on " + ituffObj.getHost());
         }
 
         if (lotNum != null && !ituffObj.getLot().equalsIgnoreCase(lotNum)) {
-            warnings.add("Lot mismatch in " + ituffObj.getFileName() + " on " + ituffObj.getHost());
+            Main.controller.addWarning("Lot mismatch in " + ituffObj.getFileName() + " on " + ituffObj.getHost());
         }
         if (sum != null && !ituffObj.getSum().equalsIgnoreCase(sum)) {
-            warnings.add("Sum mismatch in " + ituffObj.getFileName() + " on " + ituffObj.getHost());
+            Main.controller.addWarning("Sum mismatch in " + ituffObj.getFileName() + " on " + ituffObj.getHost());
         }
-        if (!Main.controller.getWarningButton().getStyleClass().contains("warning-red") && !warnings.isEmpty()) {
+        if (ituffObj.isGolden()) {
+            Main.controller.addWarning("Golden result " + ituffObj.getFileName() + " on " + ituffObj.getHost());
+        }
+        if (!Main.controller.getWarningButton().getStyleClass().contains("warning-red") && !FrontController.warnings.isEmpty()) {
             Main.controller.getWarningButton().getStyleClass().removeAll("warning-red", "warning-green");
             Main.controller.getWarningButton().getStyleClass().add("warning-red");
             Main.controller.mergeButton.setDisable(true);
         }
 
-        if (Main.controller.prodModeV.isSelected() && errCount != warnings.size()) {
+        if (Main.controller.prodModeV.isSelected() && errCount != FrontController.warnings.size()) {
             Main.controller.showWarnings();
         }
 
+        //Adding fail bin to graph
         if (!ituffObj.getBin().equals("PASS")) {
             Map<String, Map<String, Integer>> binsPerHost = GraphWindow.binsPerHost;
             Map<String, Integer> hostBinCount = binsPerHost.putIfAbsent(ituffObj.getBin(), new HashMap<>());
@@ -431,6 +446,7 @@ public class BackController {
 
     }
 
+    //Adding ituff that has different hostname from where it actually is.
     public static void addLostItuff(ItuffObject ituffObj) {
         for (SingleHostProcess process : processes) {
             if (process.getName().equalsIgnoreCase(ituffObj.getHost())) {
@@ -440,6 +456,7 @@ public class BackController {
         }
     }
 
+    //Removing ituff that has different hostname from where it actually is.
     public static void removeLostItuff(String fileName) {
         for (SingleHostProcess process : processes) {
             if (process.getNotOnHostNames().contains(fileName)) {
@@ -450,17 +467,25 @@ public class BackController {
     }
 
 
-    public static synchronized void removeItuff(String fileName) {
-        listItuffs.remove(fileName);
+    public static synchronized void removeItuff(ItuffObject ituff) {
+        listItuffs.remove(ituff.getFileName());
+        if (!ituff.getBin().equals("PASS")) {
+            Map<String, Map<String, Integer>> binsPerHost = GraphWindow.binsPerHost;
+            Map<String, Integer> hostBinCount = binsPerHost.get(ituff.getBin());
+            if (hostBinCount != null) {
+                hostBinCount.replace(ituff.getHost(), hostBinCount.get(ituff.getHost()) - 1);
+            }
+        }
         Main.controller.recount();
     }
 
-
+    //Adding public ssh key from linux to authorized.
     public synchronized static void addSSHKey(String key) throws IOException {
         FileUtils.write(new File(Main.auth.getProperty("authorized_keys")), key + "\n", true);
     }
 
-    public static void merge(Button mergeButton, TextArea textArea, String mQty, String mLoc) {
+    //Mainly formatting merge file here.
+    public static void merge(Button mergeButton, TextArea textArea, String mQty, String mLoc, String mEnd) {
         if (mLoc.equals("") || mQty.equals("")) {
             textArea.appendText("Fill all fields!\n");
             return;
@@ -502,10 +527,10 @@ public class BackController {
         lastItuff = lastItuff.replaceAll("4_total_[\\d]+", "4_total_" + (ituffArr.length - 1));
         finalMerge.append(lastItuff, lastItuff.indexOf("3_lend"), lastItuff.length());
 
-        File zip = new File(Main.auth.getProperty("merge_path") + lotNum + "_" + mLoc + "_" + sum + "_" + "ALL.zip");
+        File zip = new File(Main.auth.getProperty("merge_path") + lotNum + mEnd + "_" + mLoc + "_" + sum + "_" + "ALL.zip");
 
         try (ZipOutputStream out = new ZipOutputStream(new FileOutputStream(zip))) {
-            ZipEntry e = new ZipEntry(lotNum + "_" + mLoc + "_" + sum + "_" + "ALL");
+            ZipEntry e = new ZipEntry(lotNum + mEnd + "_" + mLoc + "_" + sum + "_" + "ALL");
             out.putNextEntry(e);
             byte[] data = finalMerge.toString().getBytes();
             out.write(data, 0, data.length);
@@ -514,8 +539,12 @@ public class BackController {
             textArea.appendText("Couldn't zip ituffs due to" + e.getMessage() + "\n");
             return;
         }
-
+        //testName is used to create directory.
+        String testName = new ItuffObject("temp", lastItuff).getTest().replaceAll("[[^a-zA-Z](.py)]*", "").toUpperCase();
         textArea.appendText("Ziped ituffs successfully\n");
+        if (!uploadToMainPC(finalMerge.toString(), testName, textArea)) {
+            return;
+        }
         if (!uploadToMidas(zip, textArea)) {
             return;
         }
@@ -527,52 +556,77 @@ public class BackController {
         Main.controller.stopProcesses();
     }
 
+    private static boolean uploadToMainPC(String finalMerge, String testName, TextArea textArea) {
+        JSch jsch;
+        Session session = null;
+        ChannelExec execChannel = null;
+        boolean res;
+
+        try {// connection
+            jsch = new JSch();
+            session = jsch.getSession(Main.auth.getProperty("user"), Main.auth.getProperty("main_pc_host"));
+            session.setPassword(Main.auth.getProperty("password"));
+            session.setConfig("StrictHostKeyChecking", "no");
+            session.connect();
+            execChannel = (ChannelExec) session.openChannel("exec");
+            String path = Main.auth.getProperty("main_merge_path") + testName + "/Data_log/" + lotNum + "/";
+            System.out.println(path);
+            execChannel.setCommand("mkdir -p " + path + ";" +
+                    "echo '" + finalMerge + "' > " + path + sum);
+            execChannel.connect();
+            res = true;
+        } catch (JSchException e) {
+            textArea.appendText("Failed to upload due to " + e.getMessage());
+            e.printStackTrace();
+            res = false;
+        } finally {
+            if (execChannel != null && !execChannel.isClosed()) {
+                execChannel.disconnect();
+            }
+            if (session != null && session.isConnected()) {
+                session.disconnect();
+            }
+        }
+        return res;
+    }
+
     private static boolean uploadToMidas(File zip, TextArea textArea) {
+        JSch jsch;
         Session session = null;
         ChannelSftp sftpChannel = null;
         boolean res = true;
 
         try {// connection
-            JSch jsch = new JSch();
+            jsch = new JSch();
             session = jsch.getSession(Main.auth.getProperty("midas_user"), Main.auth.getProperty("midas_host"));
             session.setPassword(Main.auth.getProperty("midas_password"));
             session.setConfig("StrictHostKeyChecking", "no");
             session.connect();
             sftpChannel = (ChannelSftp) session.openChannel("sftp");
             sftpChannel.connect();
-            // connected
-        } catch (JSchException e) {
+
+            File sig = new File(zip.getParent() + "/" + zip.getName().replace("zip", "sig"));
+            sig.createNewFile();
+
+            sftpChannel.put(zip.getPath(), Main.auth.getProperty("midas_zip_path"));
+            textArea.appendText("Zip uploaded\n");
+            sftpChannel.put(sig.getPath(), Main.auth.getProperty("midas_sig_path"));
+            textArea.appendText("Signal uploaded\n");
+
+            sig.delete();
+            res = true;
+        } catch (JSchException | SftpException e) {
+            textArea.appendText("Failed to upload due to " + e.getMessage());
+            res = false;
+        } catch (IOException e) {
+            textArea.appendText("Can't create file " + e.getMessage());
+        } finally {
             if (sftpChannel != null && !sftpChannel.isClosed()) {
                 sftpChannel.exit();
             }
             if (session != null && session.isConnected()) {
                 session.disconnect();
             }
-            textArea.appendText("Failed to upload due to " + e.getMessage());
-            return false;
-        }
-        File sig = new File(zip.getParent() + "/" + zip.getName().replace("zip", "fin"));
-        try {
-            sig.createNewFile();
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-
-        try {
-            sftpChannel.put(zip.getPath(), Main.auth.getProperty("midas_zip_path"));
-            textArea.appendText("Zip uploaded\n");
-            sftpChannel.put(sig.getPath(), Main.auth.getProperty("midas_sig_path"));
-            textArea.appendText("Signal uploaded\n");
-            sig.delete();
-        } catch (SftpException e) {
-            textArea.appendText("Couldn't upload due to " + e.getMessage());
-            res = false;
-        }
-        if (!sftpChannel.isClosed()) {
-            sftpChannel.exit();
-        }
-        if (session.isConnected()) {
-            session.disconnect();
         }
         return res;
     }

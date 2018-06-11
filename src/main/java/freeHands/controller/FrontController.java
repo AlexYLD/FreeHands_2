@@ -1,3 +1,4 @@
+//Created by Alexey Yarygin
 package freeHands.controller;
 
 import freeHands.entity.ItuffObject;
@@ -5,6 +6,7 @@ import freeHands.gui.GraphWindow;
 import freeHands.gui.Main;
 import freeHands.gui.MergeWindow;
 import freeHands.gui.WarningsWindow;
+import javafx.collections.FXCollections;
 import javafx.collections.ListChangeListener;
 import javafx.fxml.Initializable;
 import javafx.scene.control.*;
@@ -12,7 +14,6 @@ import javafx.scene.layout.GridPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
-import lombok.SneakyThrows;
 import org.apache.commons.io.FileUtils;
 
 import java.io.File;
@@ -21,7 +22,11 @@ import java.net.URL;
 import java.text.DecimalFormat;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+import java.util.ResourceBundle;
+import java.util.stream.Collectors;
 
 
 public class FrontController implements Initializable {
@@ -57,6 +62,7 @@ public class FrontController implements Initializable {
     public CheckBox allDatesV;
     public CheckBox prodModeV;
     public ListView<String> statsDesc;
+    static List<String> warnings = FXCollections.observableArrayList();
     public DatePicker fromDate;
     public DatePicker toDate;
     public Region upTopReg;
@@ -65,16 +71,19 @@ public class FrontController implements Initializable {
     private WarningsWindow warningsWindow;
     private MergeWindow mergeWindow;
 
-
+    //Before load.
     public void initialize(URL location, ResourceBundle resources) {
+        //Adding items into location's list
         File setUpsFolder = new File(Main.auth.getProperty("setUpsFolder"));
         Arrays.stream(setUpsFolder.listFiles()).forEach(f -> cellChooser.getItems().add(new SetUp(f.getPath())));
         cellChooser.getSelectionModel().select(0);
         cellChanged();
 
+        //Adjusting sizes of some GUI elements.
         downTopReg.maxWidthProperty().bind(upTopReg.widthProperty());
         manualText.maxWidthProperty().bind(cellChooser.widthProperty().add(connectButton.widthProperty()).add(settingsLabel.widthProperty()).add(10));
 
+        //Setting time boxes.
         for (int i = 0; i < 60; i++) {
             fromMin.getItems().add(i);
             toMin.getItems().add(i);
@@ -90,7 +99,7 @@ public class FrontController implements Initializable {
         fromDate.setValue(LocalDate.now());
         toDate.setValue(LocalDate.now());
 
-
+        //Adding buttons' and selectors logic.
         cellChooser.setOnAction(e -> cellChanged());
         checkingV.setOnAction(e -> applyChecking());
         allDatesV.setOnAction(e -> saveAll());
@@ -105,7 +114,8 @@ public class FrontController implements Initializable {
 
     }
 
-    void showMergeWindow() {
+
+    private void showMergeWindow() {
         if (!mergeWindow.getWindow().isShowing()) {
             mergeWindow.display();
         } else {
@@ -130,7 +140,8 @@ public class FrontController implements Initializable {
         saveButton.setDisable(true);
         BackController.saveExcel(commentHost.getItems());
         saveButton.setDisable(false);
-        if (checkingV.isSelected() && BackController.warnings.isEmpty()) {
+        //If no warnings will enable merge.
+        if (checkingV.isSelected() && warnings.isEmpty()) {
             mergeButton.setDisable(false);
         }
     }
@@ -139,7 +150,6 @@ public class FrontController implements Initializable {
         if (!commentText.getText().equals("")) {
             String host = commentHost.getSelectionModel().getSelectedItem().toLowerCase();
             BackController.addComment(host, commentText.getText());
-
         }
     }
 
@@ -149,11 +159,12 @@ public class FrontController implements Initializable {
         }
     }
 
-
+    //Resets all and stops listening.
     void stopProcesses() {
         if (graph.getWindow().isShowing()) {
             showGraph();
         }
+        warnings.clear();
         graph = new GraphWindow(new ArrayList<>(), "empty");
         BackController.stopProcesses();
         warningButton.getStyleClass().add("warning-red");
@@ -183,14 +194,14 @@ public class FrontController implements Initializable {
         return warningButton;
     }
 
-    @SneakyThrows
+    //Aware complicated code ahead...
     private void connect() {
-        LocalDateTime fromDateTime = LocalDateTime.now();
-        LocalDateTime toDateTime = LocalDateTime.now();
+        //Getting and setting date and time.
+        LocalDateTime fromDateTime = null;
+        LocalDateTime toDateTime = null;
         if (!allDatesV.isSelected()) {
             LocalDate date = fromDate.getValue();
-            fromDateTime = LocalDateTime.of(
-                    date.getYear(), date.getMonth(), date.getDayOfMonth(),
+            fromDateTime = LocalDateTime.of(date.getYear(), date.getMonth(), date.getDayOfMonth(),
                     fromHour.getSelectionModel().getSelectedItem(), fromMin.getSelectionModel().getSelectedItem());
             date = toDate.getValue();
             toDateTime = LocalDateTime.of(date.getYear(), date.getMonth(), date.getDayOfMonth(),
@@ -198,16 +209,17 @@ public class FrontController implements Initializable {
         }
 
         List<String> hosts;
+        //Getting host names.
         if (cellChooser.getSelectionModel().getSelectedItem().getName().equals("Manual.txt")) {
             hosts = Arrays.asList(manualText.getText().toLowerCase().split(";"));
         } else {
             hosts = cellChooser.getSelectionModel().getSelectedItem().getHosts();
         }
-        int i = 0;
+
         hostsBox.setDisable(true);
         checkingBox.setDisable(true);
 
-
+        //Adding checking parameters.
         if (checkingV.isSelected()) {
             BackController.setLotNum(lotText.getText());
             BackController.setSum(sumText.getText());
@@ -215,34 +227,41 @@ public class FrontController implements Initializable {
             BackController.setLotNum(null);
             BackController.setSum(null);
         }
+
+        //Adding GUI tables counters and listeners in cycles for each host.
+        int i = 0;
         for (String host : hosts) {
             if (allDatesV.isSelected()) {
                 BackController.connect(host);
             } else {
                 BackController.connect(host, fromDateTime, toDateTime);
             }
+
+            //If IP was specified.
             if (host.contains(" ")) {
                 host = host.substring(0, host.indexOf(" "));
             }
-            ListView<ItuffObject> listView = new ListView<>();
+
+            ListView<ItuffObject> listView = new ListView<>();//table column.
             listView.setFixedCellSize(20);
             GridPane.setHgrow(listView, Priority.ALWAYS);
             GridPane.setVgrow(listView, Priority.ALWAYS);
-            Label label = new Label(host.toUpperCase());
+            Label label = new Label(host.toUpperCase());//column title
             GridPane.setHgrow(label, Priority.ALWAYS);
             label.getStyleClass().add("name-Label");
-            listView.setCellFactory(param -> new ItuffCell());
-            listView.setItems(BackController.ituffs.get(host));
+            listView.setCellFactory(param -> new ItuffCell());//conditional formatting(Like in Excel)
+            listView.setItems(BackController.ituffs.get(host));//setting data
             listsBox.add(listView, i, 1);
             listsBox.add(label, i, 0);
 
-            ListView<Object> statsList = new ListView<>();
+            ListView<Object> statsList = new ListView<>();//statistics table column
             GridPane.setHgrow(statsList, Priority.ALWAYS);
 
 
-            statsList.getItems().addAll(0, 0, 0, 0 + "%");
+            statsList.getItems().addAll(0, 0, 0, 0 + "%");//setting starting values
             statsList.getStyleClass().add("stats-List");
 
+            //Making it count & update statistics.
             DecimalFormat df = new DecimalFormat("#.##");
             listView.getItems().addListener((ListChangeListener<ItuffObject>) c -> {
                 int listTotal = 0;
@@ -268,7 +287,7 @@ public class FrontController implements Initializable {
                 statsList.getItems().set(3, df.format(listPercent) + "%");
 
             });
-            Label label1 = new Label(host.toUpperCase());
+            Label label1 = new Label(host.toUpperCase());//statistics table title
             GridPane.setHgrow(label1, Priority.ALWAYS);
             label1.getStyleClass().add("name-Label");
 
@@ -278,9 +297,9 @@ public class FrontController implements Initializable {
             commentHost.getItems().add(host.toUpperCase());
         }
 
-        graph = new GraphWindow(commentHost.getItems(), getCellName());
-        graph.getWindow().initOwner(showGraphButton.getScene().getWindow());
-        warningsWindow = new WarningsWindow(BackController.warnings, getCellName());
+        graph = new GraphWindow(commentHost.getItems(), getCellName());//creating graph for this run.
+        graph.getWindow().initOwner(showGraphButton.getScene().getWindow());//make it close with the main window
+        warningsWindow = new WarningsWindow(warnings, getCellName());
         mergeWindow = new MergeWindow();
         commentHost.getSelectionModel().select(0);
         warningButton.setDisable(false);
@@ -294,10 +313,12 @@ public class FrontController implements Initializable {
 
     }
 
-    public String getCellName() {
+    //Cell=Location
+    String getCellName() {
         return cellChooser.getSelectionModel().getSelectedItem().toString();
     }
 
+    //Update total counters.
     void recount() {
         int totalPass = (int) BackController.listItuffs.values()
                 .stream()
@@ -310,6 +331,7 @@ public class FrontController implements Initializable {
         mergeButton.setDisable(true);
     }
 
+    //All flag's logic
     private void saveAll() {
         fromHour.setDisable(allDatesV.isSelected());
         toHour.setDisable(allDatesV.isSelected());
@@ -319,17 +341,24 @@ public class FrontController implements Initializable {
         toDate.setDisable(allDatesV.isSelected());
     }
 
+    //Apply Checking's flag logic
     private void applyChecking() {
         lotText.setDisable(!checkingV.isSelected());
         sumText.setDisable(!checkingV.isSelected());
     }
 
+    //Selecting different location logic
     private void cellChanged() {
         manualText.setDisable(!cellChooser.getSelectionModel().getSelectedItem().getName().equals("Manual.txt"));
     }
 
+    public void addWarning(String warning) {
+        warnings.add(warning);
+    }
+
 }
 
+//Regular file with additional method.
 class SetUp extends File {
 
     SetUp(String s) {
@@ -348,13 +377,15 @@ class SetUp extends File {
         } catch (IOException e) {
             e.printStackTrace();
         }
-        for (String host : hosts) {
-            host = host.toLowerCase();
-        }
+
+        hosts = hosts.stream()
+                .map(String::toLowerCase)
+                .collect(Collectors.toList());
         return hosts;
     }
 }
 
+//Some painting.
 class ItuffCell extends ListCell<ItuffObject> {
     @Override
     protected void updateItem(ItuffObject item, boolean empty) {
