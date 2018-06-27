@@ -14,6 +14,7 @@ import javafx.scene.control.Button;
 import javafx.scene.control.TextArea;
 import lombok.SneakyThrows;
 import org.apache.commons.io.FileUtils;
+import org.apache.commons.io.IOUtils;
 import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.xssf.usermodel.XSSFCreationHelper;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
@@ -485,7 +486,7 @@ public class BackController {
     }
 
     //Mainly formatting merge file here.
-    public static void merge(Button mergeButton, TextArea textArea, String mQty, String mLoc, String mEnd) {
+    public static void merge(Button mergeButton, TextArea textArea, String mQty, String mLoc, String mProj, String mEnd) {
         if (mLoc.equals("") || mQty.equals("")) {
             textArea.appendText("Fill all fields!\n");
             return;
@@ -493,8 +494,9 @@ public class BackController {
 
         textArea.appendText("Collecting ituffs\n");
         StringBuilder monoItuffs = new StringBuilder();
+        ArrayList<String> mergedNames = new ArrayList<>(listItuffs.keySet());
         for (SingleHostProcess process : processes) {
-            String merge = process.merge(textArea, mLoc);
+            String merge = process.merge(textArea, mLoc, mergedNames);
             if (merge.length() == 0) {
                 textArea.appendText("Couldn't get ituffs from " + process.getName() + "\n");
             } else {
@@ -527,7 +529,7 @@ public class BackController {
         lastItuff = lastItuff.replaceAll("4_total_[\\d]+", "4_total_" + (ituffArr.length - 1));
         finalMerge.append(lastItuff, lastItuff.indexOf("3_lend"), lastItuff.length());
 
-        File zip = new File(Main.auth.getProperty("merge_path") + lotNum + mEnd + "_" + mLoc + "_" + sum + "_" + "ALL.zip");
+        File zip = new File(Main.auth.getProperty("merge_path") + lotNum + "_" + mLoc + "_" + sum + "_" + "ALL.zip");
 
         try (ZipOutputStream out = new ZipOutputStream(new FileOutputStream(zip))) {
             ZipEntry e = new ZipEntry(lotNum + mEnd + "_" + mLoc + "_" + sum + "_" + "ALL");
@@ -539,49 +541,66 @@ public class BackController {
             textArea.appendText("Couldn't zip ituffs due to" + e.getMessage() + "\n");
             return;
         }
-        //testName is used to create directory.
-        String testName = new ItuffObject("temp", lastItuff).getTest().replaceAll("[[^a-zA-Z](.py)]*", "").toUpperCase();
         textArea.appendText("Ziped ituffs successfully\n");
-        if (!uploadToMainPC(finalMerge.toString(), testName, textArea)) {
+        if (!uploadToMainPC(finalMerge.toString(), mProj, textArea)) {
             return;
         }
+        textArea.appendText("Uploaded to Main PC successfully\n");
         if (!uploadToMidas(zip, textArea)) {
             return;
         }
-        textArea.appendText("Uploaded to Midas successfully");
+        textArea.appendText("Uploaded to Midas successfully\n");
         mergeButton.setDisable(true);
         for (SingleHostProcess process : processes) {
-            process.removeAll();
+            process.removeAll(listItuffs.keySet());
         }
         Main.controller.stopProcesses();
     }
 
-    private static boolean uploadToMainPC(String finalMerge, String testName, TextArea textArea) {
+    @SneakyThrows
+    private static boolean uploadToMainPC(String finalMerge, String projName, TextArea textArea) {
         JSch jsch;
         Session session = null;
-        ChannelExec execChannel = null;
+        ChannelSftp sftpChannel = null;
         boolean res;
-
-        try {// connection
+        try (InputStream mergeIn = IOUtils.toInputStream(finalMerge)) {// connection
             jsch = new JSch();
             session = jsch.getSession(Main.auth.getProperty("user"), Main.auth.getProperty("main_pc_host"));
             session.setPassword(Main.auth.getProperty("password"));
             session.setConfig("StrictHostKeyChecking", "no");
             session.connect();
-            execChannel = (ChannelExec) session.openChannel("exec");
-            String path = Main.auth.getProperty("main_merge_path") + testName + "/Data_log/" + lotNum + "/";
-            System.out.println(path);
-            execChannel.setCommand("mkdir -p " + path + ";" +
-                    "echo '" + finalMerge + "' > " + path + sum);
-            execChannel.connect();
+            sftpChannel = (ChannelSftp) session.openChannel("sftp");
+            sftpChannel.connect();
+            String path = projName + "/Data_log/" + lotNum + "/";
+            String[] folders = path.split("/");
+            sftpChannel.cd(Main.auth.getProperty("main_merge_path"));
+            for (String folder : folders) {
+                if (folder.length() > 0) {
+                    try {
+                        try {
+                            sftpChannel.chmod(Integer.parseInt("777", 8), folder);
+                        } catch (Exception ignored) {
+                        }
+                        sftpChannel.cd(folder);
+                        System.out.println(folder);
+                    } catch (SftpException e) {
+                        sftpChannel.mkdir(folder);
+                        sftpChannel.chmod(Integer.parseInt("777", 8), folder);
+                        sftpChannel.cd(folder);
+                    }
+                }
+            }
+
+            sftpChannel.put(mergeIn, Main.auth.getProperty("main_merge_path") + path + sum);
+            sftpChannel.chmod(Integer.parseInt("777", 8), Main.auth.getProperty("main_merge_path") + path + sum);
             res = true;
-        } catch (JSchException e) {
+        } catch (Exception e) {
             textArea.appendText("Failed to upload due to " + e.getMessage());
             e.printStackTrace();
             res = false;
         } finally {
-            if (execChannel != null && !execChannel.isClosed()) {
-                execChannel.disconnect();
+            if (sftpChannel != null && !sftpChannel.isClosed()) {
+                sftpChannel.disconnect();
             }
             if (session != null && session.isConnected()) {
                 session.disconnect();

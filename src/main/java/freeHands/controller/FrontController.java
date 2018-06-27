@@ -6,6 +6,7 @@ import freeHands.gui.GraphWindow;
 import freeHands.gui.Main;
 import freeHands.gui.MergeWindow;
 import freeHands.gui.WarningsWindow;
+import javafx.application.Platform;
 import javafx.collections.FXCollections;
 import javafx.collections.ListChangeListener;
 import javafx.fxml.Initializable;
@@ -53,6 +54,7 @@ public class FrontController implements Initializable {
     public TextField lotText;
     public TextField sumText;
     public TextField commentText;
+    public TextField yieldText;
     public Label settingsLabel;
     public Label passLabel;
     public Label failLabel;
@@ -98,6 +100,12 @@ public class FrontController implements Initializable {
         toMin.getSelectionModel().select(59);
         fromDate.setValue(LocalDate.now());
         toDate.setValue(LocalDate.now());
+
+        yieldText.textProperty().addListener((observable, oldValue, newValue) -> {
+            if (!newValue.matches("100??|\\d{0,2}")) {
+                Platform.runLater(() -> yieldText.setText(oldValue));
+            }
+        });
 
         //Adding buttons' and selectors logic.
         cellChooser.setOnAction(e -> cellChanged());
@@ -165,7 +173,7 @@ public class FrontController implements Initializable {
             showGraph();
         }
         warnings.clear();
-        graph = new GraphWindow(new ArrayList<>(), "empty");
+        graph = new GraphWindow(new ArrayList<>(), "empty", yieldText.getText());
         BackController.stopProcesses();
         warningButton.getStyleClass().add("warning-red");
         listsBox.getChildren().clear();
@@ -185,6 +193,7 @@ public class FrontController implements Initializable {
         showGraphButton.setDisable(true);
         clearButton.setDisable(true);
         mergeButton.setDisable(true);
+        yieldText.setDisable(false);
         failLabel.setText("0");
         passLabel.setText("0");
         totalLabel.setText("0");
@@ -297,11 +306,12 @@ public class FrontController implements Initializable {
             commentHost.getItems().add(host.toUpperCase());
         }
 
-        graph = new GraphWindow(commentHost.getItems(), getCellName());//creating graph for this run.
+        graph = new GraphWindow(commentHost.getItems(), getCellName(),yieldText.getText());//creating graph for this run.
         graph.getWindow().initOwner(showGraphButton.getScene().getWindow());//make it close with the main window
         warningsWindow = new WarningsWindow(warnings, getCellName());
         mergeWindow = new MergeWindow();
         commentHost.getSelectionModel().select(0);
+        yieldText.setDisable(true);
         warningButton.setDisable(false);
         submitButton.setDisable(false);
         commentHost.setDisable(false);

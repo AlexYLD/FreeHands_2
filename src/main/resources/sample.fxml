@@ -12,7 +12,7 @@
     <!--Settings-->
 
     <HBox alignment="CENTER_LEFT" spacing="5" fx:id="hostsBox">
-        <Label text="Location:" fx:id="settingsLabel"/>
+        <Label text="Cell:" fx:id="settingsLabel"/>
         <ComboBox promptText="Choose Cell" fx:id="cellChooser"/>
         <Button text="CONNECT" fx:id="connectButton"/>
         <Region HBox.hgrow="ALWAYS" fx:id="upTopReg"/>
@@ -45,6 +45,8 @@
         <Button text="Refresh" fx:id="refreshButton" disable="true"/>
         <Button text="Clear" fx:id="clearButton" disable="true"/>
         <Button text="Graph" fx:id="showGraphButton" disable="true"/>
+        <TextField promptText="Yield" text="90" fx:id="yieldText" maxWidth="35"/>
+        <Label text="\%"/>
         <Separator orientation="HORIZONTAL" HBox.hgrow="ALWAYS"/>
         <Button text="Save" fx:id="saveButton" disable="true"/>
         <Button text="Merge" fx:id="mergeButton" disable="true"/>
@@ -63,7 +65,7 @@
         <Label text="TOTAL:" style="-fx-text-fill: whitesmoke"/>
         <Label text="0" style="-fx-text-fill: whitesmoke" fx:id="totalLabel"/>
         <Region HBox.hgrow="ALWAYS"/>
-        <CheckBox fx:id="prodModeV"/>
+        <CheckBox fx:id="prodModeV" selected="true"/>
         <Button text="WARNINGS" styleClass="warning-green" fx:id="warningButton" disable="true"/>
         <Region HBox.hgrow="ALWAYS"/>
         <ComboBox promptText="Machine" fx:id="commentHost" disable="true"/>

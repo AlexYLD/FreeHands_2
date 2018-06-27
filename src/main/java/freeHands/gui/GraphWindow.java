@@ -3,7 +3,6 @@ package freeHands.gui;
 
 import freeHands.controller.BackController;
 import freeHands.entity.ItuffObject;
-import freeHands.model.SingleHostProcess;
 import javafx.collections.FXCollections;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
@@ -14,15 +13,12 @@ import javafx.scene.chart.StackedBarChart;
 import javafx.scene.chart.XYChart;
 import javafx.scene.control.Label;
 import javafx.scene.control.ScrollPane;
-import javafx.scene.layout.Border;
 import javafx.scene.layout.GridPane;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.VBox;
-import javafx.stage.Modality;
 import javafx.stage.Stage;
 import lombok.Getter;
 
-import java.net.PortUnreachableException;
 import java.util.*;
 
 @Getter
@@ -30,13 +26,15 @@ public class GraphWindow {
 
     private StackedBarChart<String, Number> graph;
     private List<String> hosts;
+    private int yield;
     private Stage window;
     private GridPane failTable;
     //Map<bin,Map<host,binCount>>
     public static Map<String, Map<String, Integer>> binsPerHost;
 
-    public GraphWindow(List<String> hosts, String title) {
+    public GraphWindow(List<String> hosts, String title, String yield) {
         this.hosts = hosts;
+        this.yield = yield.equals("") || yield == null ? 90 : Integer.parseInt(yield);
         binsPerHost = new HashMap<>();
         VBox vBox = new VBox(10);
         failTable = new GridPane();
@@ -98,7 +96,7 @@ public class GraphWindow {
                 data.setYValue(per);
                 Node node = data.getNode();
                 if (node != null) {
-                    if (per >= 90) {
+                    if (per >= yield) {
                         node.setStyle("-fx-bar-fill: green;");
                     } else {
                         node.setStyle("-fx-bar-fill: orange;");
