@@ -246,7 +246,7 @@ public class SingleHostProcess extends Thread {
                     disconnect();
                 }
                 try {
-                    Thread.sleep(1500);
+                    Thread.sleep(10000);
                 } catch (InterruptedException e) {
                     currentThread().interrupt();
                     myInterrupt();
@@ -286,6 +286,7 @@ public class SingleHostProcess extends Thread {
                             "echo '" + listenerCode + "' > " + remoteListenerLocation + ";" +
                             "chmod +x " + remoteListenerLocation + ";" +
                             "nohup " + remoteListenerLocation + " &>/dev/null";
+                    // "nohup "+ remoteListenerLocation + " &>" +Main.auth.getProperty("remoteListenerLocation")+"log";
                     execChannel.setCommand(command);
                     execChannel.connect();
                     disconnect();
@@ -465,7 +466,6 @@ public class SingleHostProcess extends Thread {
     public void removeAll(Set<String> filenames) {
         if (connectToHost()) {
             for (String fileName : filenames) {
-                //String fileName = ituffObject.getFileName();
                 if (fileName.toLowerCase().startsWith("comment")) {
                     continue;
                 }

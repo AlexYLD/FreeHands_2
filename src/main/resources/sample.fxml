@@ -16,29 +16,32 @@
         <ComboBox promptText="Choose Cell" fx:id="cellChooser"/>
         <Button text="CONNECT" fx:id="connectButton"/>
         <Region HBox.hgrow="ALWAYS" fx:id="upTopReg"/>
-        <Label text="LOT:" GridPane.columnIndex="0" GridPane.rowIndex="0"/>
+        <Label text="Check" alignment="CENTER_LEFT" prefWidth="50"/>
+        <CheckBox GridPane.columnIndex="1" GridPane.rowIndex="2" fx:id="checkingV"/>
+        <Label text="LOT: " GridPane.columnIndex="0" GridPane.rowIndex="0"/>
         <TextField promptText="Lot" GridPane.columnIndex="1" GridPane.rowIndex="0" disable="true" fx:id="lotText"/>
         <Label text="SUM:" GridPane.columnIndex="0" GridPane.rowIndex="1"/>
-        <TextField promptText="Sum" maxWidth="50" GridPane.columnIndex="1" GridPane.rowIndex="1" disable="true"
+        <TextField promptText="Sum" prefWidth="60" GridPane.columnIndex="1" GridPane.rowIndex="1" disable="true"
                    fx:id="sumText"/>
-        <CheckBox text="Apply Checking" GridPane.columnIndex="1" GridPane.rowIndex="2" fx:id="checkingV"/>
+
     </HBox>
 
     <GridPane vgap="5" hgap="5" fx:id="checkingBox">
         <TextField promptText="Write hosts here" alignment="CENTER" GridPane.columnIndex="0" GridPane.rowIndex="0"
                    fx:id="manualText" GridPane.hgrow="ALWAYS"/>
         <Region GridPane.columnIndex="1" GridPane.rowIndex="0" fx:id="downTopReg"/>
-        <CheckBox text="All" selected="true" fx:id="allDatesV" GridPane.columnIndex="7" GridPane.rowIndex="0"/>
-        <Label text="From" style="-fx-font-weight: bold" GridPane.columnIndex="2" GridPane.rowIndex="0"/>
-        <DatePicker fx:id="fromDate" disable="true" maxWidth="100" GridPane.columnIndex="3" GridPane.rowIndex="0"/>
-        <ComboBox fx:id="fromHour" disable="true" GridPane.columnIndex="4" GridPane.rowIndex="0"/>
-        <Label text=":" style="-fx-font-weight: bold" GridPane.columnIndex="5" GridPane.rowIndex="0"/>
-        <ComboBox fx:id="fromMin" disable="true" GridPane.columnIndex="6" GridPane.rowIndex="0"/>
-        <Label text="To" style="-fx-font-weight: bold" GridPane.columnIndex="2" GridPane.rowIndex="1"/>
-        <DatePicker fx:id="toDate" disable="true" maxWidth="100" GridPane.columnIndex="3" GridPane.rowIndex="1"/>
-        <ComboBox fx:id="toHour" disable="true" GridPane.columnIndex="4" GridPane.rowIndex="1"/>
-        <Label text=":" style="-fx-font-weight: bold" GridPane.columnIndex="5" GridPane.rowIndex="1"/>
-        <ComboBox fx:id="toMin" disable="true" GridPane.columnIndex="6" GridPane.rowIndex="1"/>
+        <Label text="Interval" prefWidth="50" alignment="CENTER_LEFT" GridPane.columnIndex="2" GridPane.rowIndex="0"/>
+        <CheckBox fx:id="allDatesV" GridPane.columnIndex="3" GridPane.rowIndex="0"/>
+        <Label text="From" style="-fx-font-weight: bold" GridPane.columnIndex="4" GridPane.rowIndex="0"/>
+        <DatePicker fx:id="fromDate" disable="true" maxWidth="110" GridPane.columnIndex="5" GridPane.rowIndex="0"/>
+        <ComboBox fx:id="fromHour" disable="true" GridPane.columnIndex="6" GridPane.rowIndex="0"/>
+        <Label text=":" style="-fx-font-weight: bold" GridPane.columnIndex="7" GridPane.rowIndex="0"/>
+        <ComboBox fx:id="fromMin" disable="true" GridPane.columnIndex="8" GridPane.rowIndex="0"/>
+        <Label text="To" style="-fx-font-weight: bold" GridPane.columnIndex="4" GridPane.rowIndex="1"/>
+        <DatePicker fx:id="toDate" disable="true" maxWidth="110" GridPane.columnIndex="5" GridPane.rowIndex="1"/>
+        <ComboBox fx:id="toHour" disable="true" GridPane.columnIndex="6" GridPane.rowIndex="1"/>
+        <Label text=":" style="-fx-font-weight: bold" GridPane.columnIndex="7" GridPane.rowIndex="1"/>
+        <ComboBox fx:id="toMin" disable="true" GridPane.columnIndex="8" GridPane.rowIndex="1"/>
     </GridPane>
 
     <HBox alignment="CENTER_LEFT" spacing="3">

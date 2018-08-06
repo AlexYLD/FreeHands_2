@@ -551,7 +551,12 @@ public class BackController {
         }
         textArea.appendText("Uploaded to Midas successfully\n");
         mergeButton.setDisable(true);
-        for (SingleHostProcess process : processes) {
+        for (File file : Objects.requireNonNull(new File(Main.auth.getProperty("backUpFolder") + lotNum + "/" + sum).listFiles())) {//fix backUp
+            if (!listItuffs.keySet().contains(file.getName())) {
+                file.delete();
+            }
+        }
+        for (SingleHostProcess process : processes) {//remove ituffs
             process.removeAll(listItuffs.keySet());
         }
         Main.controller.stopProcesses();

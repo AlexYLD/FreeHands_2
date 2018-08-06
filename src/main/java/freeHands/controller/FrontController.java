@@ -208,7 +208,7 @@ public class FrontController implements Initializable {
         //Getting and setting date and time.
         LocalDateTime fromDateTime = null;
         LocalDateTime toDateTime = null;
-        if (!allDatesV.isSelected()) {
+        if (allDatesV.isSelected()) {
             LocalDate date = fromDate.getValue();
             fromDateTime = LocalDateTime.of(date.getYear(), date.getMonth(), date.getDayOfMonth(),
                     fromHour.getSelectionModel().getSelectedItem(), fromMin.getSelectionModel().getSelectedItem());
@@ -240,7 +240,7 @@ public class FrontController implements Initializable {
         //Adding GUI tables counters and listeners in cycles for each host.
         int i = 0;
         for (String host : hosts) {
-            if (allDatesV.isSelected()) {
+            if (!allDatesV.isSelected()) {
                 BackController.connect(host);
             } else {
                 BackController.connect(host, fromDateTime, toDateTime);
@@ -343,12 +343,12 @@ public class FrontController implements Initializable {
 
     //All flag's logic
     private void saveAll() {
-        fromHour.setDisable(allDatesV.isSelected());
-        toHour.setDisable(allDatesV.isSelected());
-        fromMin.setDisable(allDatesV.isSelected());
-        toMin.setDisable(allDatesV.isSelected());
-        fromDate.setDisable(allDatesV.isSelected());
-        toDate.setDisable(allDatesV.isSelected());
+        fromHour.setDisable(!allDatesV.isSelected());
+        toHour.setDisable(!allDatesV.isSelected());
+        fromMin.setDisable(!allDatesV.isSelected());
+        toMin.setDisable(!allDatesV.isSelected());
+        fromDate.setDisable(!allDatesV.isSelected());
+        toDate.setDisable(!allDatesV.isSelected());
     }
 
     //Apply Checking's flag logic
