@@ -13,4 +13,3 @@ ssh  "touch "/cygdrive/c/freehandsstuff/flags/"$(hostname)\ $(date +"%s")"""
 fi
 mylist="$my2list"
 done
-rm /ppv/tools/DARC/ituff_tracker
