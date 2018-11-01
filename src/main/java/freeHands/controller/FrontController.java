@@ -10,6 +10,7 @@ import javafx.application.Platform;
 import javafx.collections.FXCollections;
 import javafx.collections.ListChangeListener;
 import javafx.fxml.Initializable;
+import javafx.scene.Node;
 import javafx.scene.control.*;
 import javafx.scene.layout.GridPane;
 import javafx.scene.layout.HBox;
@@ -149,7 +150,11 @@ public class FrontController implements Initializable {
         BackController.saveExcel(commentHost.getItems());
         saveButton.setDisable(false);
         //If no warnings will enable merge.
-        if (checkingV.isSelected() && warnings.isEmpty()) {
+        if (checkingV.isSelected() && warnings.isEmpty()
+                && !Main.auth.getProperty("midas_user").isEmpty()
+                && !Main.auth.getProperty("midas_password").isEmpty()
+                && !Main.auth.getProperty("main_merge_path").isEmpty()
+                && !Main.auth.getProperty("main_pc_host").isEmpty()) {
             mergeButton.setDisable(false);
         }
     }
@@ -258,6 +263,7 @@ public class FrontController implements Initializable {
             Label label = new Label(host.toUpperCase());//column title
             GridPane.setHgrow(label, Priority.ALWAYS);
             label.getStyleClass().add("name-Label");
+            label.setDisable(true);
             listView.setCellFactory(param -> new ItuffCell());//conditional formatting(Like in Excel)
             listView.setItems(BackController.ituffs.get(host));//setting data
             listsBox.add(listView, i, 1);
@@ -306,7 +312,7 @@ public class FrontController implements Initializable {
             commentHost.getItems().add(host.toUpperCase());
         }
 
-        graph = new GraphWindow(commentHost.getItems(), getCellName(),yieldText.getText());//creating graph for this run.
+        graph = new GraphWindow(commentHost.getItems(), getCellName(), yieldText.getText());//creating graph for this run.
         graph.getWindow().initOwner(showGraphButton.getScene().getWindow());//make it close with the main window
         warningsWindow = new WarningsWindow(warnings, getCellName());
         mergeWindow = new MergeWindow();
@@ -323,7 +329,7 @@ public class FrontController implements Initializable {
 
     }
 
-    //Cell=Location
+    //Cell=Set of hosts
     String getCellName() {
         return cellChooser.getSelectionModel().getSelectedItem().toString();
     }
@@ -366,6 +372,18 @@ public class FrontController implements Initializable {
         warnings.add(warning);
     }
 
+    private Label getNameLabel(String name) {
+        for (Node child : listsBox.getChildren()) {
+            if (child instanceof Label && ((Label) child).getText().toUpperCase().equals(name.toUpperCase())) {
+                return (Label) child;
+            }
+        }
+        return null;
+    }
+
+    public void setHostStatus(String name, boolean status) {
+        getNameLabel(name).setDisable(!status);
+    }
 }
 
 //Regular file with additional method.

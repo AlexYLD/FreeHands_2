@@ -597,7 +597,7 @@ public class BackController {
             }
 
             sftpChannel.put(mergeIn, Main.auth.getProperty("main_merge_path") + path + sum);
-            sftpChannel.chmod(Integer.parseInt("777", 8), Main.auth.getProperty("main_merge_path") + path + sum);
+            //sftpChannel.chmod(Integer.parseInt("777", 8), Main.auth.getProperty("main_merge_path") + path + sum);
             res = true;
         } catch (Exception e) {
             textArea.appendText("Failed to upload due to " + e.getMessage());

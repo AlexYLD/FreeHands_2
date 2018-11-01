@@ -73,7 +73,7 @@ public class SingleHostProcess extends Thread {
     //Same as previous constructor except for date.
     public SingleHostProcess(String host, LocalDateTime fromDateTime, LocalDateTime toDateTime) {
         if (host.contains(" ")) {
-            this.host = host.substring(host.indexOf(" "));
+            this.host = host.substring(host.indexOf(" ") + 1);
             this.setName(host.substring(0, host.indexOf(" ")));
         } else {
             this.host = host + ".iil.intel.com";
@@ -100,6 +100,7 @@ public class SingleHostProcess extends Thread {
         File flagsFolder = new File(Main.auth.getProperty("flagsFolder"));
 
         firstConnect();
+        Main.controller.setHostStatus(this.getName(), true);
         if (myInterrupt) {
             return;
         }
@@ -292,7 +293,8 @@ public class SingleHostProcess extends Thread {
                     disconnect();
                     break;
                 } catch (Exception e) {
-                    e.printStackTrace();
+                    disconnect();
+                    sleep(10000);
                 }
             }
         }
@@ -344,9 +346,13 @@ public class SingleHostProcess extends Thread {
 
     //Pinging host
     private void waitTillAvailable() {
+        boolean slept = false;
         while (!myInterrupt) {
             try {
                 if (InetAddress.getByName(host).isReachable(2000)) {
+                    if (slept) {
+                        Main.controller.setHostStatus(this.getName(), true);
+                    }
                     break;
                 } else {
                     throw new IOException("");
@@ -355,6 +361,11 @@ public class SingleHostProcess extends Thread {
                 System.err.println(this.getName() + " Unreacheble");
             }
             try {
+                if (!slept) {
+                    Main.controller.setHostStatus(this.getName(), false);
+                    slept = true;
+                }
+
                 sleep(10000);
             } catch (InterruptedException ex) {
                 currentThread().interrupt();

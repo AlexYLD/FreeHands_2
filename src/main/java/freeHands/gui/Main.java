@@ -7,6 +7,7 @@ import javafx.application.Application;
 import javafx.fxml.FXMLLoader;
 import javafx.scene.Parent;
 import javafx.scene.Scene;
+import javafx.scene.image.Image;
 import javafx.stage.Stage;
 
 import java.util.Properties;
@@ -29,6 +30,7 @@ public class Main extends Application {
         primaryStage.setTitle("Free Hands 2.0");
         primaryStage.setMinWidth(500);
         primaryStage.setMinHeight(700);
+        primaryStage.getIcons().add(new Image(Main.class.getResourceAsStream("/Hand.jpg")));
         Scene scene = new Scene(root, 700, 500);
         scene.getStylesheets().add("/myStyle.css");
         primaryStage.setScene(scene);

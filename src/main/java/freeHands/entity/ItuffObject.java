@@ -5,6 +5,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 import lombok.SneakyThrows;
 
+import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.HashMap;
@@ -76,7 +77,11 @@ public class ItuffObject implements Comparable<ItuffObject> {
         } else {
             sdf = new SimpleDateFormat("ddMMyyyyHHmmss");
             dateStr = fileName.substring(5, fileName.lastIndexOf("_")).replaceAll("_", "");
-            return sdf.parse(dateStr);
+            try {
+                return sdf.parse(dateStr);
+            } catch (ParseException e) {
+                return new Date();
+            }
         }
     }
 
@@ -85,7 +90,7 @@ public class ItuffObject implements Comparable<ItuffObject> {
         String ibin = getValueFrom(ituffText, "_curibin_");
         String bin = ibin + "." + fbin;
 
-        if (bin.equals("1.100")||bin.equals("1.0")) {
+        if (bin.equals("1.100") || bin.equals("1.0")) {
             bin = "PASS";
         }
         return bin;
