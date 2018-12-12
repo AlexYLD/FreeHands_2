@@ -59,14 +59,14 @@
     <GridPane styleClass="grid-table" fx:id="listsBox" VBox.vgrow="ALWAYS" minHeight="110"></GridPane>
 
     <HBox spacing="5" alignment="CENTER">
-        <Label text="PASS:" textFill="#67b55b" style="-fx-font-weight: bold"/>
-        <Label text="0" fx:id="passLabel"/>
+        <Label text="PASS:" textFill="#67b55b" style="-fx-font-weight: bold; -fx-font-size: 15"/>
+        <Label text="0" style="-fx-font-size: 15" fx:id="passLabel"/>
         <Separator orientation="VERTICAL"/>
-        <Label text="FAIL:" style="-fx-text-fill: #ff6d68"/>
-        <Label text="0" style="-fx-text-fill: #ff6d68" fx:id="failLabel"/>
+        <Label text="FAIL:" style="-fx-text-fill: #ff6d68;-fx-font-size: 15"/>
+        <Label text="0" style="-fx-text-fill: #ff6d68; -fx-font-size: 15" fx:id="failLabel"/>
         <Separator orientation="VERTICAL"/>
-        <Label text="TOTAL:" style="-fx-text-fill: whitesmoke"/>
-        <Label text="0" style="-fx-text-fill: whitesmoke" fx:id="totalLabel"/>
+        <Label text="TOTAL:" style="-fx-text-fill: whitesmoke;-fx-font-size: 15"/>
+        <Label text="0" style="-fx-text-fill: whitesmoke;-fx-font-size: 15" fx:id="totalLabel"/>
         <Region HBox.hgrow="ALWAYS"/>
         <CheckBox fx:id="prodModeV" selected="true"/>
         <Button text="WARNINGS" styleClass="warning-green" fx:id="warningButton" disable="true"/>

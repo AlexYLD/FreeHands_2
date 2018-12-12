@@ -9,7 +9,7 @@ then
 echo "true"
 else
 echo "false"
-ssh  "touch "/cygdrive/c/freehandsstuff/flags/"$(hostname)\ $(date +"%s")"""
+timeout 5 hostname | nc IP port
 fi
 mylist="$my2list"
 done

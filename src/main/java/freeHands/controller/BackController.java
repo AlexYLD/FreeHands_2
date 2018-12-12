@@ -5,15 +5,16 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.jcraft.jsch.*;
 import freeHands.entity.CommentObj;
 import freeHands.entity.ItuffObject;
-import freeHands.gui.ConfirmWindow;
+import freeHands.entity.WarningObject;
+import freeHands.entity.WarningType;
 import freeHands.gui.GraphWindow;
+import freeHands.gui.LoadingWindow;
 import freeHands.gui.Main;
 import freeHands.model.SingleHostProcess;
+import javafx.application.Platform;
 import javafx.collections.transformation.SortedList;
-import javafx.scene.control.Button;
 import javafx.scene.control.TextArea;
 import lombok.SneakyThrows;
-import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.IOUtils;
 import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.xssf.usermodel.XSSFCreationHelper;
@@ -33,6 +34,8 @@ public class BackController {
 
     private static Set<SingleHostProcess> processes = new HashSet<>();//set of threads for each host
 
+    private static List<WarningObject> nonGuiWarnings = new ArrayList<>();
+
     private static String lotNum;
     private static String sum;
 
@@ -47,6 +50,18 @@ public class BackController {
     static void connect(String host) {
         SingleHostProcess process = new SingleHostProcess(host);
         addProcess(process);
+    }
+
+    public static void addWarning(WarningObject warning) {
+        synchronized (BackController.class) {
+            nonGuiWarnings.add(warning);
+        }
+        Platform.runLater(() -> Main.controller.addWarning(warning));
+    }
+
+
+    public static SingleHostProcess getProcess(String ituffName) {
+        return processes.stream().filter(p -> p.getExistNames().contains(ituffName)).findFirst().orElse(null);
     }
 
     static void connect(String host, LocalDateTime fromDateTime, LocalDateTime toDateTime) {
@@ -87,11 +102,11 @@ public class BackController {
             process.interrupt();
             process.myInterrupt();
         }
-
+        nonGuiWarnings.clear();
         ituffs.clear();
         listItuffs.clear();
         processes.clear();
-        FileUtils.write(new File(Main.auth.getProperty("authorized_keys")), "", false);
+        // FileUtils.write(new File(Main.auth.getProperty("authorized_keys")), "", false);
     }
 
     @SneakyThrows
@@ -103,7 +118,6 @@ public class BackController {
         for (SingleHostProcess process : processes) {
             while (process.isAlive()) ;
         }
-        FileUtils.write(new File(Main.auth.getProperty("authorized_keys")), "", false);
     }
 
     //POI API
@@ -399,52 +413,65 @@ public class BackController {
     }
 
     //Adding ituff to lists
-    public synchronized static void addToAll(ItuffObject ituffObj) {
-        int errCount = FrontController.warnings.size();
-        if (listItuffs.keySet().contains(ituffObj.getFileName())) {
-            return;
-        }
-        if (!ituffObj.getStrUlt().equals("No ULT") && listItuffs.values().contains(ituffObj)) {
-            List<ItuffObject> list = new ArrayList<>(listItuffs.values());
-            ItuffObject ituff = list.get(list.indexOf(ituffObj));
-            Main.controller.addWarning("Duplicates: " + ituff.getFileName() + "(" + ituff.getBin() +
-                    ") on " + ituff.getHost() + " and " + ituffObj.getFileName() + "(" + ituffObj.getBin() + ") on " + ituffObj.getHost());
-        }
-
-        if (lotNum != null && !ituffObj.getLot().equalsIgnoreCase(lotNum)) {
-            Main.controller.addWarning("Lot mismatch in " + ituffObj.getFileName() + " on " + ituffObj.getHost());
-        }
-        if (sum != null && !ituffObj.getSum().equalsIgnoreCase(sum)) {
-            Main.controller.addWarning("Sum mismatch in " + ituffObj.getFileName() + " on " + ituffObj.getHost());
-        }
-        if (ituffObj.isGolden()) {
-            Main.controller.addWarning("Golden result " + ituffObj.getFileName() + " on " + ituffObj.getHost());
-        }
-        if (!Main.controller.getWarningButton().getStyleClass().contains("warning-red") && !FrontController.warnings.isEmpty()) {
-            Main.controller.getWarningButton().getStyleClass().removeAll("warning-red", "warning-green");
-            Main.controller.getWarningButton().getStyleClass().add("warning-red");
-            Main.controller.mergeButton.setDisable(true);
-        }
-
-        if (Main.controller.prodModeV.isSelected() && errCount != FrontController.warnings.size()) {
-            Main.controller.showWarnings();
-        }
-
-        //Adding fail bin to graph
-        if (!ituffObj.getBin().equals("PASS")) {
-            Map<String, Map<String, Integer>> binsPerHost = GraphWindow.binsPerHost;
-            Map<String, Integer> hostBinCount = binsPerHost.putIfAbsent(ituffObj.getBin(), new HashMap<>());
-            if (hostBinCount == null) {
-                hostBinCount = binsPerHost.get(ituffObj.getBin());
+    public static void addToAll(ItuffObject newItuff) {
+        synchronized (BackController.class) {
+            if (listItuffs.keySet().contains(newItuff.getFileName())) {
+                return;
             }
-            if (hostBinCount.putIfAbsent(ituffObj.getHost(), 1) != null) {
-                hostBinCount.put(ituffObj.getHost(), hostBinCount.get(ituffObj.getHost()) + 1);
+            if (!newItuff.getStrUlt().equals("No ULT") && listItuffs.values().contains(newItuff)) {
+                ItuffObject oldItuff = listItuffs.values().stream()
+                        .filter(i -> i.equals(newItuff))
+                        .findFirst().get();
+
+                boolean knownDuplicate = false;
+                for (WarningObject warning : nonGuiWarnings) {
+                    List<ItuffObject> badItuffs = warning.getBadItuffs();
+                    if (warning.getWarningType().equals(WarningType.DUPLICATES) && badItuffs.contains(newItuff)) {
+                        badItuffs.add(newItuff);
+                        Platform.runLater(() -> {
+                            Main.controller.removeWarning(warning);
+                            Main.controller.addWarning(warning);
+                        });
+                        knownDuplicate = true;
+                        break;
+                    }
+                }
+
+                if (!knownDuplicate) {
+                    WarningObject newWarning = new WarningObject(WarningType.DUPLICATES, oldItuff, newItuff);
+                    addWarning(newWarning);
+                }
             }
+
+            if (lotNum != null && !newItuff.getLot().equalsIgnoreCase(lotNum)) {
+                WarningObject warning = new WarningObject(WarningType.LOT_MISMATCH, newItuff);
+                addWarning(warning);
+            }
+            if (sum != null && !newItuff.getSum().equalsIgnoreCase(sum)) {
+                WarningObject warning = new WarningObject(WarningType.SUM_MISMATCH, newItuff);
+                addWarning(warning);
+            }
+            if (newItuff.isGolden()) {
+                WarningObject warning = new WarningObject(WarningType.GOLDEN_RESULT, newItuff);
+                addWarning(warning);
+            }
+
+
+            //Adding fail bin to graph
+            if (!newItuff.getBin().equals("PASS")) {
+                Map<String, Map<String, Integer>> binsPerHost = GraphWindow.binsPerHost;
+                Map<String, Integer> hostBinCount = binsPerHost.putIfAbsent(newItuff.getBin(), new HashMap<>());
+                if (hostBinCount == null) {
+                    hostBinCount = binsPerHost.get(newItuff.getBin());
+                }
+                if (hostBinCount.putIfAbsent(newItuff.getHost(), 1) != null) {
+                    hostBinCount.put(newItuff.getHost(), hostBinCount.get(newItuff.getHost()) + 1);
+                }
+            }
+
+            listItuffs.put(newItuff.getFileName(), newItuff);
+            Main.controller.recount();
         }
-
-        listItuffs.put(ituffObj.getFileName(), ituffObj);
-        Main.controller.recount();
-
     }
 
     //Adding ituff that has different hostname from where it actually is.
@@ -468,54 +495,84 @@ public class BackController {
     }
 
 
-    public static synchronized void removeItuff(ItuffObject ituff) {
-        listItuffs.remove(ituff.getFileName());
-        if (!ituff.getBin().equals("PASS")) {
-            Map<String, Map<String, Integer>> binsPerHost = GraphWindow.binsPerHost;
-            Map<String, Integer> hostBinCount = binsPerHost.get(ituff.getBin());
-            if (hostBinCount != null) {
-                hostBinCount.replace(ituff.getHost(), hostBinCount.get(ituff.getHost()) - 1);
+    public static void removeItuff(ItuffObject ituff) {
+        synchronized (BackController.class) {
+            listItuffs.remove(ituff.getFileName());
+            if (!ituff.getBin().equals("PASS")) {
+                Map<String, Map<String, Integer>> binsPerHost = GraphWindow.binsPerHost;
+                Map<String, Integer> hostBinCount = binsPerHost.get(ituff.getBin());
+                if (hostBinCount != null) {
+                    hostBinCount.replace(ituff.getHost(), hostBinCount.get(ituff.getHost()) - 1);
+                }
             }
+
+            int size = nonGuiWarnings.size();
+            for (int i = 0; i < size; i++) {
+                WarningObject warning = nonGuiWarnings.get(i);
+                List<ItuffObject> badItuffs = warning.getBadItuffs();
+                if (badItuffs.stream().noneMatch(bi -> bi.getFileName().equals(ituff.getFileName()))) {
+                    continue;
+                }
+
+                if (!warning.getWarningType().equals(WarningType.DUPLICATES)) {
+                    Platform.runLater(() -> Main.controller.removeWarning(warning));
+                    nonGuiWarnings.remove(warning);
+                    i--;
+                    size--;
+                } else {
+                    if (badItuffs.size() <= 2) {
+                        Platform.runLater(() -> Main.controller.removeWarning(warning));
+                        nonGuiWarnings.remove(warning);
+                        i--;
+                        size--;
+                    } else {
+                        badItuffs.removeIf(it -> it.getFileName().equals(ituff.getFileName()));
+                        Platform.runLater(() -> {
+                            Main.controller.removeWarning(warning);
+                            Main.controller.addWarning(warning);
+                        });
+                    }
+                }
+            }
+            Main.controller.recount();
         }
-        Main.controller.recount();
     }
 
-    //Adding public ssh key from linux to authorized.
-    public synchronized static void addSSHKey(String key) throws IOException {
-        FileUtils.write(new File(Main.auth.getProperty("authorized_keys")), key + "\n", true);
-    }
 
     //Mainly formatting merge file here.
-    public static void merge(Button mergeButton, TextArea textArea, String mQty, String mLoc, String mProj, String mEnd) {
-        if (mLoc.equals("") || mQty.equals("")) {
-            textArea.appendText("Fill all fields!\n");
+    public static void merge(TextArea textArea, String mQty, String mLoc, String mProj, String mEnd) {
+        Main.controller.addLog("Merging");
+        if (mLoc.equals("") || mQty.equals("") || mProj.equals("")) {
+            Platform.runLater(() -> textArea.appendText("Fill all fields!\n"));
             return;
         }
-
-        textArea.appendText("Collecting ituffs\n");
+        Platform.runLater(() -> {
+            textArea.appendText("Collecting ituffs\n");
+            LoadingWindow.show("Collecting");
+        });
         StringBuilder monoItuffs = new StringBuilder();
         ArrayList<String> mergedNames = new ArrayList<>(listItuffs.keySet());
         for (SingleHostProcess process : processes) {
             String merge = process.merge(textArea, mLoc, mergedNames);
             if (merge.length() == 0) {
-                textArea.appendText("Couldn't get ituffs from " + process.getName() + "\n");
+                Platform.runLater(() -> textArea.appendText("Couldn't get ituffs from " + process.getName() + "\n"));
             } else {
                 monoItuffs.append(merge);
-                textArea.appendText("Got ituffs from " + process.getName() + "\n");
+                Platform.runLater(() -> textArea.appendText("Got ituffs from " + process.getName() + "\n"));
             }
         }
-        textArea.appendText("Collected\n");
-
+        Platform.runLater(() -> textArea.appendText("Collected\n"));
+        Platform.runLater(LoadingWindow::close);
         String[] ituffArr = monoItuffs.toString().split("7_lend");
         if (Integer.parseInt(mQty) != (ituffArr.length - 1)) {
-            textArea.appendText("Wrong quantity!(" + (ituffArr.length - 1) + ")\n");
+            Platform.runLater(() -> {
+                textArea.appendText("Wrong quantity!(" + (ituffArr.length - 1) + ")\n");
+                Platform.runLater(LoadingWindow::close);
+            });
             return;
         }
 
-        if (!ConfirmWindow.display("Merge", "Upload results?")) {
-            textArea.appendText("Merge canceled\n");
-            return;
-        }
+        Platform.runLater(() -> LoadingWindow.show("Zipping"));
 
         String header = monoItuffs.substring(0, monoItuffs.indexOf("3_lsep"));
 
@@ -538,28 +595,47 @@ public class BackController {
             out.write(data, 0, data.length);
             out.closeEntry();
         } catch (IOException e) {
-            textArea.appendText("Couldn't zip ituffs due to" + e.getMessage() + "\n");
+            Platform.runLater(() -> {
+                textArea.appendText("Couldn't zip ituffs due to" + e.getMessage() + "\n");
+                LoadingWindow.close();
+            });
             return;
         }
-        textArea.appendText("Ziped ituffs successfully\n");
+        Platform.runLater(() -> {
+            textArea.appendText("Ziped ituffs successfully\n");
+            LoadingWindow.close();
+        });
+        Platform.runLater(() -> LoadingWindow.show("Uploading"));
+
         if (!uploadToMainPC(finalMerge.toString(), mProj, textArea)) {
+            Platform.runLater(LoadingWindow::close);
             return;
         }
-        textArea.appendText("Uploaded to Main PC successfully\n");
+        Platform.runLater(() -> textArea.appendText("Uploaded to Main PC successfully\n"));
         if (!uploadToMidas(zip, textArea)) {
+            Platform.runLater(LoadingWindow::close);
             return;
         }
-        textArea.appendText("Uploaded to Midas successfully\n");
-        mergeButton.setDisable(true);
+        Platform.runLater(() -> {
+            textArea.appendText("Uploaded to Midas successfully\n");
+            LoadingWindow.close();
+            LoadingWindow.show("Deleting");
+        });
+
         for (File file : Objects.requireNonNull(new File(Main.auth.getProperty("backUpFolder") + lotNum + "/" + sum).listFiles())) {//fix backUp
             if (!listItuffs.keySet().contains(file.getName())) {
                 file.delete();
             }
         }
+
         for (SingleHostProcess process : processes) {//remove ituffs
+            process.createItuffsJson();
             process.removeAll(listItuffs.keySet());
         }
-        Main.controller.stopProcesses();
+        Platform.runLater(() -> {
+            Platform.runLater(LoadingWindow::close);
+            Main.controller.stopProcesses();
+        });
     }
 
     @SneakyThrows
@@ -584,10 +660,11 @@ public class BackController {
                     try {
                         try {
                             sftpChannel.chmod(Integer.parseInt("777", 8), folder);
-                        } catch (Exception ignored) {
+                        } catch (Exception e) {
+                            Main.controller.addExceptionLog(e, Thread.currentThread().getName());
                         }
                         sftpChannel.cd(folder);
-                        System.out.println(folder);
+                        Platform.runLater(() -> Main.controller.addLog(folder));
                     } catch (SftpException e) {
                         sftpChannel.mkdir(folder);
                         sftpChannel.chmod(Integer.parseInt("777", 8), folder);
@@ -600,8 +677,10 @@ public class BackController {
             //sftpChannel.chmod(Integer.parseInt("777", 8), Main.auth.getProperty("main_merge_path") + path + sum);
             res = true;
         } catch (Exception e) {
-            textArea.appendText("Failed to upload due to " + e.getMessage());
-            e.printStackTrace();
+            Platform.runLater(() -> {
+                textArea.appendText("Failed to upload due to " + e.getMessage());
+                Main.controller.addExceptionLog(e, Thread.currentThread().getName());
+            });
             res = false;
         } finally {
             if (sftpChannel != null && !sftpChannel.isClosed()) {
@@ -641,9 +720,11 @@ public class BackController {
             res = true;
         } catch (JSchException | SftpException e) {
             textArea.appendText("Failed to upload due to " + e.getMessage());
+            Platform.runLater(() -> Main.controller.addExceptionLog(e, Thread.currentThread().getName()));
             res = false;
         } catch (IOException e) {
             textArea.appendText("Can't create file " + e.getMessage());
+            Platform.runLater(() -> Main.controller.addExceptionLog(e, Thread.currentThread().getName()));
         } finally {
             if (sftpChannel != null && !sftpChannel.isClosed()) {
                 sftpChannel.exit();
@@ -654,6 +735,8 @@ public class BackController {
         }
         return res;
     }
+
+
 }
 
 

@@ -15,7 +15,6 @@ import lombok.SneakyThrows;
 import org.apache.commons.io.FileUtils;
 
 import java.io.File;
-import java.io.IOException;
 
 @Getter
 public class MergeWindow {
@@ -62,8 +61,16 @@ public class MergeWindow {
         logs = new TextArea();
         logs.setEditable(false);
         Button mergeButton = new Button("Merge");
-        mergeButton.setOnAction(e -> BackController.merge(mergeButton, logs, qty.getText(), loc.getText(),
-                project.getSelectionModel().getSelectedItem(), end.getText()));
+        mergeButton.setOnAction(e -> {
+            if (!ConfirmWindow.display("Merge", "Are you sure?")) {
+                logs.appendText("Merge canceled\n");
+                return;
+            }
+            new Thread(() -> {
+                BackController.merge(logs, qty.getText(), loc.getText(),
+                        project.getSelectionModel().getSelectedItem(), end.getText());
+            }).start();
+        });
         mainVbox.getChildren().addAll(fieldsBox, logs, mergeButton);
         Scene scene = new Scene(mainVbox, 700, 300);
         scene.getStylesheets().add("/myStyle.css");

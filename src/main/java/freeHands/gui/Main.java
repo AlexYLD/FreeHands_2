@@ -8,8 +8,12 @@ import javafx.fxml.FXMLLoader;
 import javafx.scene.Parent;
 import javafx.scene.Scene;
 import javafx.scene.image.Image;
+import javafx.scene.input.KeyCode;
+import javafx.scene.input.KeyCodeCombination;
+import javafx.scene.input.KeyCombination;
 import javafx.stage.Stage;
 
+import java.io.IOException;
 import java.util.Properties;
 
 /*
@@ -20,10 +24,10 @@ Inner logic is in BackController
 public class Main extends Application {
     public static Properties auth = new Properties();
     public static FrontController controller;
+    public static Stage mainWindow;
 
     @Override
     public void start(Stage primaryStage) throws Exception {
-        auth.load(Main.class.getResourceAsStream("/application.properties"));
         FXMLLoader loader = new FXMLLoader(getClass().getResource("/sample.fxml"));
         Parent root = loader.load();
         controller = loader.getController();
@@ -32,15 +36,23 @@ public class Main extends Application {
         primaryStage.setMinHeight(700);
         primaryStage.getIcons().add(new Image(Main.class.getResourceAsStream("/Hand.jpg")));
         Scene scene = new Scene(root, 700, 500);
+        KeyCombination kc = new KeyCodeCombination(KeyCode.L, KeyCombination.CONTROL_DOWN);
+        Runnable action = () -> controller.showHideLogs();
+        scene.getAccelerators().put(kc, action);
         scene.getStylesheets().add("/myStyle.css");
+        mainWindow = primaryStage;
         primaryStage.setScene(scene);
         primaryStage.show();
-        primaryStage.setOnCloseRequest(e -> BackController.exit());
+        primaryStage.setOnCloseRequest(e -> {
+            controller.saveLogs();
+            BackController.exit();
+        });
 
     }
 
 
-    public static void main(String[] args) {
+    public static void main(String[] args) throws IOException {
+        auth.load(Main.class.getResourceAsStream("/application.properties"));
         launch(args);
     }
 }

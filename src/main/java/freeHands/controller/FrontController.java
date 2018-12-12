@@ -2,13 +2,12 @@
 package freeHands.controller;
 
 import freeHands.entity.ItuffObject;
-import freeHands.gui.GraphWindow;
-import freeHands.gui.Main;
-import freeHands.gui.MergeWindow;
-import freeHands.gui.WarningsWindow;
+import freeHands.entity.WarningObject;
+import freeHands.gui.*;
 import javafx.application.Platform;
 import javafx.collections.FXCollections;
 import javafx.collections.ListChangeListener;
+import javafx.collections.ObservableList;
 import javafx.fxml.Initializable;
 import javafx.scene.Node;
 import javafx.scene.control.*;
@@ -24,10 +23,7 @@ import java.net.URL;
 import java.text.DecimalFormat;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
-import java.util.ResourceBundle;
+import java.util.*;
 import java.util.stream.Collectors;
 
 
@@ -65,7 +61,7 @@ public class FrontController implements Initializable {
     public CheckBox allDatesV;
     public CheckBox prodModeV;
     public ListView<String> statsDesc;
-    static List<String> warnings = FXCollections.observableArrayList();
+    public static ObservableList<WarningObject> warnings = FXCollections.observableArrayList();
     public DatePicker fromDate;
     public DatePicker toDate;
     public Region upTopReg;
@@ -73,9 +69,11 @@ public class FrontController implements Initializable {
     private GraphWindow graph;
     private WarningsWindow warningsWindow;
     private MergeWindow mergeWindow;
+    private LogWindow logWindow;
 
     //Before load.
     public void initialize(URL location, ResourceBundle resources) {
+        logWindow = new LogWindow();
         //Adding items into location's list
         File setUpsFolder = new File(Main.auth.getProperty("setUpsFolder"));
         Arrays.stream(setUpsFolder.listFiles()).forEach(f -> cellChooser.getItems().add(new SetUp(f.getPath())));
@@ -121,8 +119,43 @@ public class FrontController implements Initializable {
         showGraphButton.setOnAction(e -> showGraph());
         mergeButton.setOnAction(e -> showMergeWindow());
 
+        warnings.addListener((ListChangeListener<? super WarningObject>) c -> {
+            if (!FrontController.warnings.isEmpty()) {
+                if (!warningButton.getStyleClass().contains("warning-red")) {
+                    warningButton.getStyleClass().removeAll("warning-red", "warning-green");
+                    warningButton.getStyleClass().add("warning-red");
+                }
+                mergeButton.setDisable(true);
+                if (prodModeV.isSelected()) {
+                    showWarnings();
+                }
+            } else {
+                warningButton.getStyleClass().removeAll("warning-red", "warning-green");
+                warningButton.getStyleClass().add("warning-green");
+            }
+        });
+
     }
 
+    public void addLog(String log) {
+        logWindow.addLog(log);
+    }
+
+    public void addExceptionLog(Exception e, String threadName) {
+        logWindow.addExceptionLog(e, threadName);
+    }
+
+    public void saveLogs() {
+        logWindow.save();
+    }
+
+    public void showHideLogs() {
+        if (logWindow.isShowing()) {
+            logWindow.hide();
+        } else {
+            logWindow.show();
+        }
+    }
 
     private void showMergeWindow() {
         if (!mergeWindow.getWindow().isShowing()) {
@@ -313,7 +346,7 @@ public class FrontController implements Initializable {
         }
 
         graph = new GraphWindow(commentHost.getItems(), getCellName(), yieldText.getText());//creating graph for this run.
-        graph.getWindow().initOwner(showGraphButton.getScene().getWindow());//make it close with the main window
+        graph.getWindow().initOwner(Main.mainWindow);//make it close with the main window
         warningsWindow = new WarningsWindow(warnings, getCellName());
         mergeWindow = new MergeWindow();
         commentHost.getSelectionModel().select(0);
@@ -340,11 +373,13 @@ public class FrontController implements Initializable {
                 .stream()
                 .filter(i12 -> i12.getBin() != null && i12.getBin().equalsIgnoreCase("pass"))
                 .count();
-        totalLabel.setText(String.valueOf(BackController.listItuffs.size()));
-        passLabel.setText(String.valueOf(totalPass));
-        failLabel.setText(String.valueOf(BackController.listItuffs.size() - totalPass));
-        graph.refillGraphData();
-        mergeButton.setDisable(true);
+        Platform.runLater(() -> {
+            totalLabel.setText(String.valueOf(BackController.listItuffs.size()));
+            passLabel.setText(String.valueOf(totalPass));
+            failLabel.setText(String.valueOf(BackController.listItuffs.size() - totalPass));
+            graph.refillGraphData();
+            mergeButton.setDisable(true);
+        });
     }
 
     //All flag's logic
@@ -368,8 +403,14 @@ public class FrontController implements Initializable {
         manualText.setDisable(!cellChooser.getSelectionModel().getSelectedItem().getName().equals("Manual.txt"));
     }
 
-    public void addWarning(String warning) {
+    public void addWarning(WarningObject warning) {
+        // Platform.runLater(() -> warnings.add(warning));
         warnings.add(warning);
+    }
+
+    public void removeWarning(WarningObject warning) {
+        //Platform.runLater(() -> warnings.remove(warning));
+        warnings.remove(warning);
     }
 
     private Label getNameLabel(String name) {
@@ -382,7 +423,10 @@ public class FrontController implements Initializable {
     }
 
     public void setHostStatus(String name, boolean status) {
-        getNameLabel(name).setDisable(!status);
+        Label nameLabel = getNameLabel(name);
+        if (nameLabel != null) {
+            nameLabel.setDisable(!status);
+        }
     }
 }
 
@@ -403,7 +447,7 @@ class SetUp extends File {
         try {
             hosts = FileUtils.readLines(this, "UTF-8");
         } catch (IOException e) {
-            e.printStackTrace();
+            Platform.runLater(() -> Main.controller.addExceptionLog(e, Thread.currentThread().getName()));
         }
 
         hosts = hosts.stream()

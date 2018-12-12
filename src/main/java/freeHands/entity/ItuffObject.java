@@ -114,7 +114,7 @@ public class ItuffObject implements Comparable<ItuffObject> {
 
         ItuffObject that = (ItuffObject) o;
 
-        return strUlt != null ? strUlt.equals(that.strUlt) : that.strUlt == null;
+        return (strUlt != null && !strUlt.equals("No ULT")) && strUlt.equals(that.strUlt);
     }
 
     @Override

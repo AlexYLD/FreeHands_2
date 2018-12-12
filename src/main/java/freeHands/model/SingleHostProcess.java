@@ -6,6 +6,8 @@ import com.jcraft.jsch.*;
 import freeHands.controller.BackController;
 import freeHands.entity.CommentObj;
 import freeHands.entity.ItuffObject;
+import freeHands.entity.WarningObject;
+import freeHands.entity.WarningType;
 import freeHands.gui.Main;
 import javafx.application.Platform;
 import javafx.collections.FXCollections;
@@ -20,6 +22,7 @@ import org.apache.commons.io.IOUtils;
 import java.io.*;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.*;
@@ -42,7 +45,7 @@ public class SingleHostProcess extends Thread {
     private String signature;
 
     //Prevents double connection.
-    private final Object mergeLock = new Object();
+    private final Object connectionLock = new Object();
 
 
     public SingleHostProcess(String host) {
@@ -126,6 +129,12 @@ public class SingleHostProcess extends Thread {
                     file.delete();
                     i--;
                 }
+                if (file.getName().toLowerCase().startsWith("json_" + this.getName().toLowerCase())) {
+                    createItuffsJson();
+                    list.remove(i);
+                    file.delete();
+                    i--;
+                }
             }
             if (!myInterrupt) {
                 try {
@@ -146,7 +155,7 @@ public class SingleHostProcess extends Thread {
             execChannel = (ChannelExec) session.openChannel("exec");
             execChannel.setCommand("rm " + Main.auth.getProperty("remoteListenerLocation") + signature + ".sh");
             execChannel.connect();
-            System.out.println(this.getName() + " Tracker stopped");
+            Platform.runLater(() -> Main.controller.addLog(this.getName() + " Tracker stopped"));
             while (!execChannel.isClosed()) {
                 Thread.sleep(500);
             }
@@ -154,10 +163,40 @@ public class SingleHostProcess extends Thread {
         } catch (JSchException | InterruptedException e) {
             currentThread().interrupt();
             myInterrupt();
-            e.printStackTrace();
+            Platform.runLater(() -> Main.controller.addExceptionLog(e, Thread.currentThread().getName()));
         }
 
-        System.out.println(this.getName() + " Out");
+        Platform.runLater(() -> Main.controller.addLog(this.getName() + " Out"));
+    }
+
+    public void createItuffsJson() {
+        File json = new File(Main.auth.getProperty("jsonBackUpFolder") + this.getName() + "_" + System.currentTimeMillis() + ".json");
+        StringBuilder content = new StringBuilder("[\n");
+        for (ItuffObject ituff : ituffs) {
+            if (ituff.getFileName().startsWith("comment")) {
+                continue;
+            }
+            content.append("{\"fileName\":\"").append(ituff.getFileName()).append("\",\n");
+            content.append("\"bin\":\"").append(ituff.getBin()).append("\",\n");
+            content.append("\"lot\":\"").append(ituff.getLot()).append("\",\n");
+            content.append("\"sum\":\"").append(ituff.getSum()).append("\",\n");
+            content.append("\"host\":\"").append(ituff.getHost()).append("\",\n");
+            content.append("\"loc\":\"").append(ituff.getLocation()).append("\",\n");
+            content.append("\"date\":\"").append(ituff.getDate().getTime()).append("\"},\n");
+        }
+        content.append("]");
+        int lastIndexOf = content.lastIndexOf(",");
+        if (lastIndexOf > 0) {
+            content.replace(lastIndexOf, lastIndexOf + 1, "");
+        }
+        try {
+            FileUtils.writeStringToFile(json, content.toString(), StandardCharsets.UTF_8);
+        } catch (IOException e) {
+            Platform.runLater(() -> {
+                Main.controller.addLog("Can't write file due to: " + e.getCause() + " " + e.getMessage());
+                Main.controller.addExceptionLog(e, Thread.currentThread().getName());
+            });
+        }
     }
 
 
@@ -166,7 +205,7 @@ public class SingleHostProcess extends Thread {
     }
 
     private void checkAndTake() {
-        synchronized (mergeLock) {
+        synchronized (connectionLock) {
             List<String> remoteNames;
             Vector<ChannelSftp.LsEntry> remoteFolderVector = getRemoteNamesVector();
 
@@ -178,22 +217,20 @@ public class SingleHostProcess extends Thread {
                     if (!fileName.startsWith("Dut") || fileName.endsWith("~") || existNames.contains(fileName)) {
                         continue;
                     }
-                    StringBuilder ituffText = new StringBuilder();
-                    try (InputStream is = sftpChannel.get(fileName); BufferedReader br = new BufferedReader(new InputStreamReader(is))) {
-                        String line;
-                        while ((line = br.readLine()) != null) {
-                            ituffText.append(line).append("\n");
-                        }
-                    } catch (IOException | SftpException e) {
-                        break;
+                    StringBuilder ituffText = getItuffText(fileName);
+                    if (ituffText == null) break;
+
+                    ItuffObject ituffObj = new ItuffObject(fileName, ituffText.toString());
+                    if (ituffObj.getHost().equals("not found")) {
+                        ituffObj.setHost(this.getName());
                     }
                     if (ituffText.length() == 0) {
-                        Main.controller.addWarning("Empty file: " + fileName + " on " + this.getName());
+                        BackController.addWarning(new WarningObject(WarningType.EMPTY_FILE, ituffObj));
+
                         existNames.add(fileName);
                     } else {
-                        ItuffObject ituffObj = new ItuffObject(fileName, ituffText.toString());
                         if (!ituffText.toString().matches("[\\s\\S]*7_lend[\\s]*")) {
-                            Main.controller.addWarning("Damaged file: " + fileName + " on " + this.getName());
+                            BackController.addWarning(new WarningObject(WarningType.DAMAGED_FILE, ituffObj));
                         }
                         //Back up ituff
                         String path = Main.auth.getProperty("backUpFolder") + ituffObj.getLot() + "/" + ituffObj.getSum() + "/";
@@ -206,10 +243,9 @@ public class SingleHostProcess extends Thread {
                             try {
                                 FileUtils.writeStringToFile(new File(path + fileName), ituffText.toString(), "UTF-8");
                             } catch (IOException e) {
-                                e.printStackTrace();
+                                Platform.runLater(() -> Main.controller.addExceptionLog(e, Thread.currentThread().getName()));
                             }
                         }
-                        existNames.add(ituffObj.getFileName());
                         addItuff(ituffObj, true);
                     }
 
@@ -225,8 +261,22 @@ public class SingleHostProcess extends Thread {
             }
 
             disconnect();
-            System.out.println(this.getName() + " Got ituffs");
+            Platform.runLater(() -> Main.controller.addLog(this.getName() + " Got ituffs"));
         }
+    }
+
+    //check that connectToHost() was called before and sftp is in the right folder.
+    private StringBuilder getItuffText(String fileName) {
+        StringBuilder ituffText = new StringBuilder();
+        try (InputStream is = sftpChannel.get(fileName); BufferedReader br = new BufferedReader(new InputStreamReader(is))) {
+            String line;
+            while ((line = br.readLine()) != null) {
+                ituffText.append(line).append("\n");
+            }
+        } catch (IOException | SftpException e) {
+            return null;
+        }
+        return ituffText;
     }
 
     private Vector<ChannelSftp.LsEntry> getRemoteNamesVector() {
@@ -243,7 +293,13 @@ public class SingleHostProcess extends Thread {
                     remoteFolderVector = sftpChannel.ls(Main.auth.getProperty("remoteFolder"));
                     break;
                 } catch (Exception e) {
-                    System.out.println(this.getName() + " Failed to get ituffs");
+                    Platform.runLater(() -> {
+                        Main.controller.addLog(this.getName() + " Failed to get ituffs");
+                        if (!e.getMessage().contains("No such file")) {
+                            Main.controller.addExceptionLog(e, Thread.currentThread().getName());
+                        }
+                    });
+
                     disconnect();
                 }
                 try {
@@ -267,20 +323,15 @@ public class SingleHostProcess extends Thread {
         String remoteListenerLocation = Main.auth.getProperty("remoteListenerLocation") + signature + ".sh";
 
         listenerCode = listenerCode.replaceAll("tracker", "tracker" + signature + ".sh");
-        listenerCode = listenerCode.replace("ssh ", "ssh " + Main.auth.getProperty("ssh_name"));
+        listenerCode = listenerCode.replace("IP", InetAddress.getLocalHost().getHostAddress());
+        listenerCode = listenerCode.replace("port", Main.auth.getProperty("server_port"));
         while (true) {
             waitTillAvailable();
             if (myInterrupt) {
                 return;
             }
             if (connectToHost()) {
-                try (InputStream is = sftpChannel.get(Main.auth.getProperty("keyLocation")); BufferedReader br = new BufferedReader(new InputStreamReader(is))) {
-                    StringBuilder keyStr = new StringBuilder();
-                    String line;
-                    while ((line = br.readLine()) != null) {
-                        keyStr.append(line);
-                    }
-                    BackController.addSSHKey(keyStr.toString());
+                try {
                     String oldTrackerLoc = remoteListenerLocation.substring(0, remoteListenerLocation.lastIndexOf("/"));
                     execChannel = (ChannelExec) session.openChannel("exec");
                     String command = "rm $(find " + oldTrackerLoc + " | grep ituff_tracker" + signature.substring(0, signature.lastIndexOf("_")) + ");" +
@@ -293,6 +344,7 @@ public class SingleHostProcess extends Thread {
                     disconnect();
                     break;
                 } catch (Exception e) {
+                    Platform.runLater(() -> Main.controller.addExceptionLog(e, Thread.currentThread().getName()));
                     disconnect();
                     sleep(10000);
                 }
@@ -303,20 +355,36 @@ public class SingleHostProcess extends Thread {
 
     public synchronized void removeItuff(String fileName) {
         //Platform.runLater is JavaFx's safe way of changing GUI dinamicly
-        Platform.runLater(() -> {
-            Iterator<ItuffObject> iterator = ituffs.iterator();
-            while (iterator.hasNext()) {
-                ItuffObject ituff = iterator.next();
-                if (ituff.getFileName().equals(fileName)) {
-                    iterator.remove();
-                    BackController.removeItuff(ituff);
-                    return;
+        final Object lock = new Object();
+
+        ItuffObject ituff = ituffs.stream()
+                .filter(i -> i.getFileName().equals(fileName))
+                .findFirst()
+                .orElse(null);
+
+        if (ituff != null) {
+            Platform.runLater(() -> {
+                synchronized (lock) {
+                    ituffs.removeIf(i -> i.getFileName().equals(fileName));
+                    lock.notify();
+                }
+            });
+            synchronized (lock) {
+                try {
+                    lock.wait();
+                } catch (InterruptedException e) {
+                    Main.controller.addExceptionLog(e, Thread.currentThread().getName());
                 }
             }
+            BackController.removeItuff(ituff);
+        } else {
             BackController.removeLostItuff(fileName);
-        });
+        }
+
         existNames.remove(fileName);
+        notOnHostNames.remove(fileName);
     }
+
 
     public synchronized void addItuff(ItuffObject ituffObj, boolean isOnHost) {
         if (ituffObj.compareTo(from) < 0 || ituffObj.compareTo(to) > 0) {
@@ -325,6 +393,12 @@ public class SingleHostProcess extends Thread {
 
         if ((!isOnHost && existNames.contains(ituffObj.getFileName())) || notOnHostNames.contains(ituffObj.getFileName())) {
             return;
+        }
+
+        if (!isOnHost) {
+            notOnHostNames.add(ituffObj.getFileName());
+        } else {
+            existNames.add(ituffObj.getFileName());
         }
 
         if (!ituffObj.getHost().equalsIgnoreCase(this.getName())) {
@@ -338,10 +412,9 @@ public class SingleHostProcess extends Thread {
             return;
         }
 
-        Platform.runLater(() -> BackController.addToAll(ituffObj));
-        if (!isOnHost) {
-            notOnHostNames.add(ituffObj.getFileName());
-        }
+        //Platform.runLater(() -> BackController.addToAll(ituffObj));
+        BackController.addToAll(ituffObj);
+
     }
 
     //Pinging host
@@ -358,7 +431,7 @@ public class SingleHostProcess extends Thread {
                     throw new IOException("");
                 }
             } catch (IOException e) {
-                System.err.println(this.getName() + " Unreacheble");
+                Platform.runLater(() -> Main.controller.addLog(this.getName() + " Unreacheble"));
             }
             try {
                 if (!slept) {
@@ -375,6 +448,10 @@ public class SingleHostProcess extends Thread {
         }
     }
 
+    /*
+     * Every method that uses this one should be synchronized by connectionLock
+     * and end with calling of disconnect()
+     * */
     private boolean connectToHost() {
         try {// connection
             jsch = new JSch();
@@ -386,7 +463,7 @@ public class SingleHostProcess extends Thread {
             sftpChannel.connect();
             return true;// connected
         } catch (JSchException e) {
-            System.err.println(e.getMessage() + "\n" + e.getCause());
+            Platform.runLater(() -> Main.controller.addExceptionLog(e, Thread.currentThread().getName()));
             disconnect();
             return false;
         }
@@ -413,7 +490,7 @@ public class SingleHostProcess extends Thread {
                 try {
                     addItuff(mapper.readValue(file, CommentObj.class), false);
                 } catch (IOException e) {
-                    e.printStackTrace();
+                    Platform.runLater(() -> Main.controller.addExceptionLog(e, Thread.currentThread().getName()));
                 }
             }
         }
@@ -421,7 +498,7 @@ public class SingleHostProcess extends Thread {
 
     //Compressing all ituffs to one. Also checking some parameters.
     public String merge(TextArea textArea, String mLoc, ArrayList<String> mergedNames) {
-        synchronized (mergeLock) {
+        synchronized (connectionLock) {
             StringBuilder mergedItuffs = new StringBuilder();
             if (connectToHost()) {
                 for (String fileName : existNames) {
@@ -474,20 +551,63 @@ public class SingleHostProcess extends Thread {
     }
 
     //Removing ituffs after merge.
-    public void removeAll(Set<String> filenames) {
-        if (connectToHost()) {
+    public boolean removeAll(Set<String> filenames) {
+        synchronized (connectionLock) {
+            if (!connectToHost()) {
+                return false;
+            }
+            boolean wasException = false;
+            String fullFileName;
             for (String fileName : filenames) {
                 if (fileName.toLowerCase().startsWith("comment")) {
                     continue;
                 }
-                fileName = Main.auth.getProperty("remoteFolder") + fileName;
+                fullFileName = Main.auth.getProperty("remoteFolder") + fileName;
                 try {
-                    sftpChannel.rm(fileName);
+                    if (existNames.contains(fileName)) {
+                        sftpChannel.rm(fullFileName);
+                    }
                 } catch (SftpException e) {
-                    System.out.println("Cant remove because" + e.getMessage() + " " + e.getCause());
+                    wasException = true;
+                    Platform.runLater(() -> {
+                        Main.controller.addLog("Cant remove because " + e.getMessage() + " " + e.getCause());
+                        Main.controller.addExceptionLog(e, Thread.currentThread().getName());
+                    });
                 }
             }
             disconnect();
+            return !wasException;
+        }
+
+    }
+
+    public String getSingleItuffText(String fullFileName) {
+        synchronized (connectionLock) {
+            if (!connectToHost()) {
+                return null;
+            }
+            StringBuilder ituffText = getItuffText(fullFileName);
+            disconnect();
+            return ituffText != null ? ituffText.toString() : "";
+        }
+    }
+
+    public boolean setItuffText(String fullFileName, String newText) {
+        synchronized (connectionLock) {
+            if (!connectToHost()) {
+                return false;
+            }
+            boolean res;
+            try {
+                sftpChannel.rm(fullFileName);
+                sftpChannel.put(new ByteArrayInputStream(newText.getBytes(StandardCharsets.UTF_8)), fullFileName);
+                res = true;
+            } catch (SftpException e) {
+                res = false;
+                Platform.runLater(() -> Main.controller.addExceptionLog(e, Thread.currentThread().getName()));
+            }
+            disconnect();
+            return res;
         }
     }
 
