@@ -13,4 +13,3 @@ timeout 5 hostname | nc IP port
 fi
 mylist="$my2list"
 done
-rm /ppv/tools/DARC/ituff_tracker
